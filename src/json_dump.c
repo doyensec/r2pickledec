@@ -94,6 +94,9 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 	case PY_INT:
 		ret &= pj_N (pj, obj->py_int)? true: false;
 		break;
+	case PY_FLOAT:
+		ret &= pj_d (pj, obj->py_float)? true: false;
+		break;
 	case PY_NONE:
 		ret &= pj_null (pj)? true: false;
 		break;
@@ -186,6 +189,8 @@ const char *py_type_to_name(enum PyType t) {
 		return "PY_NONE";
 	case PY_INT:
 		return "PY_INT";
+	case PY_FLOAT:
+		return "PY_FLOAT";
 	case PY_STR:
 		return "PY_STR";
 	case PY_FUNC:

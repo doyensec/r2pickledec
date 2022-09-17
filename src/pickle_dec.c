@@ -20,6 +20,7 @@ static void py_obj_free(PyObj *obj) {
 			break;
 		case PY_BOOL:
 		case PY_INT:
+		case PY_FLOAT:
 		case PY_NONE:
 			break;
 		case PY_FUNC:
@@ -312,7 +313,9 @@ static inline bool op_setitems(PMState *pvm) {
 static inline char *op_str_arg(RAnalOp *op) {
 	if (op && op->mnemonic) {
 		const char *ptr = strstr (op->mnemonic, " \"");
-		return strdup (ptr + 1);
+		if (ptr) {
+			return strdup (ptr + 1);
+		}
 	}
 	return NULL;
 }
@@ -331,6 +334,21 @@ static inline bool push_int_type(PMState *pvm, RAnalOp *op) {
 		obj->py_int = op->val;
 		if (r_list_push (pvm->stack, obj)) {
 			return true;
+		}
+		py_obj_free (obj);
+	}
+	return false;
+}
+
+static inline bool op_float(PMState *pvm, RAnalOp *op, bool quoted) {
+	PyObj *obj = py_obj_new (pvm, PY_FLOAT);
+	if (obj) {
+		const char *fmt = quoted? "float \"%lf\"": "binfloat %lf";
+		if (sscanf (op->mnemonic, fmt, &obj->py_float) == 1) {
+			R_LOG_DEBUG ("\t%lf", obj->py_float);
+			if (r_list_push (pvm->stack, obj)) {
+				return true;
+			}
 		}
 		py_obj_free (obj);
 	}
@@ -454,6 +472,11 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_LONG1:
 	case OP_LONG4:
 		return push_int_type (pvm, op);
+	// floats
+	case OP_FLOAT:
+		return op_float (pvm, op, true);
+	case OP_BINFLOAT:
+		return op_float (pvm, op, false);
 	// strings TODO: distinguish between b'', u'', and ''
 	case OP_BINUNICODE8:
 	case OP_BINBYTES8:
@@ -516,7 +539,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_DUP:
 		return op_dup (pvm);
 
-	case OP_FLOAT:
 	case OP_INT:
 	case OP_LONG:
 	case OP_PERSID:
@@ -528,7 +550,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_LIST:
 	case OP_OBJ:
 	case OP_PUT:
-	case OP_BINFLOAT:
 	// registry
 	case OP_EXT1:
 	case OP_EXT2:
@@ -629,6 +650,10 @@ static inline bool dump_py_obj(PyObj *obj, int tab) {
 	case PY_INT:
 		print_tabs (tab);
 		r_cons_printf ("%d%s", obj->py_int, dump_nl (tab));
+		break;
+	case PY_FLOAT:
+		print_tabs (tab);
+		r_cons_printf ("%lf%s", obj->py_float, dump_nl (tab));
 		break;
 	case PY_NONE:
 		print_tabs (tab);

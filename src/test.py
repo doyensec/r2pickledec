@@ -79,6 +79,22 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"popstack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"memo":[{"index":1,"value":{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}}]}\n'
+    }, {
+       "name" : "OP Float",
+       "asm" : """
+            proto 2
+            float "1.2"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_FLOAT","value":1.200000}],"popstack":[],"memo":[]}\n'
+    }, {
+       "name" : "OP binfloat",
+       "asm" : """
+            proto 2
+            binfloat 1.2
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_FLOAT","value":1.200000}],"popstack":[],"memo":[]}\n'
     },
 ]
 

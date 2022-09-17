@@ -81,7 +81,7 @@ enum opcode {
 
 enum PyType {
 	PY_NOT_RIGHT = 0, // initial invalid type
-	PY_INT, PY_STR, PY_BOOL, PY_NONE,
+	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT,
 	PY_FUNC, PY_FUNC_R, PY_NEWOBJ, PY_BUILD,
 	PY_TUPLE, PY_LIST, PY_DICT, // iters, PY_FUNC_R could be an itter...
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
@@ -117,9 +117,10 @@ struct python_object {
 	ut64 memo_id;
 	int opcode;
 	union {
-		st32 py_int;
-		const char *py_str;
 		bool py_bool;
+		st32 py_int;
+		double py_float;
+		const char *py_str;
 		RList *py_iter; // tuple, list, etc...
 		double py_double;
 		PyFunc py_func;
