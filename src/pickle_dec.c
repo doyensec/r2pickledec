@@ -209,7 +209,6 @@ static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, enum PyType t, 
 			}
 			R_LOG_ERROR ("OP: %s at 0x%"PFMT64x" No MARK to restore from", n, pvm->offset);
 		}
-		return true;
 	}
 	return false;
 }
