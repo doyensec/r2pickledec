@@ -126,7 +126,7 @@ static inline bool memo_put(PMState *s, ut32 loc) {
 		py_obj_free (obj);
 	}
 	obj = pm_stack_peek (s);
-	if (obj && r_id_storage_add (s->memo, obj, &loc)) {
+	if (obj && r_id_storage_set (s->memo, obj, loc)) {
 		R_LOG_DEBUG ("\t[++] Memo[%d]  %p", loc, obj);
 		return true;
 	}
@@ -637,6 +637,7 @@ static inline bool dump_py_obj(PyObj *obj, int tab) {
 	case PY_INT:
 		print_tabs (tab);
 		r_cons_printf ("%d%s", obj->py_int, dump_nl (tab));
+		break;
 	case PY_NONE:
 		print_tabs (tab);
 		r_cons_printf ("None%s", dump_nl (tab));

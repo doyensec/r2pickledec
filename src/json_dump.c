@@ -113,10 +113,10 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 		ret &= pj_s (pj, obj->py_str)? true: false;
 		break;
 	case PY_LIST:
-		ret &= pj_klist (pj, "list", obj->py_iter, meta);
+		ret &= pj_list (pj, obj->py_iter, meta);
 		break;
 	case PY_TUPLE:
-		ret &= pj_klist (pj, "tuple", obj->py_iter, meta);
+		ret &= pj_list (pj, obj->py_iter, meta);
 		break;
 	case PY_DICT:
 		ret &= pj_py_dict_meta (pj, obj->py_iter);
@@ -135,7 +135,13 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 static bool _pj_memo(void *user, void *data, ut32 id) {
 	PJ *pj = (PJ *)user;
 	PyObj *obj = (PyObj *)data;
-	if (pj_kn (pj, "index", id) && pj_k (pj, "value") && py_obj (pj, obj, true) && pj_end (pj)) {
+	if (
+		pj_o (pj)
+		&& pj_kn (pj, "index", id)
+		&& pj_k (pj, "value")
+		&& py_obj (pj, obj, true)
+		&& pj_end (pj)
+	) {
 		return true;
 	}
 	return false;

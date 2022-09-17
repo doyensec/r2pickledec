@@ -66,6 +66,19 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_NONE","value":null}],"popstack":[],"memo":[]}\n'
+    }, {
+       "name" : "List in memmo is the list in the stack",
+       "asm" : """
+            proto 2
+            empty_list
+            binput 1
+            binint1 42
+            append
+            pop
+            binget 1
+            stop
+       """,
+       "ret" : 'TODO'
     },
 ]
 
@@ -76,13 +89,14 @@ def assemble_in_cache(r2, asm):
 
 r2 = r2pipe.open("-")
 r2.cmd("e asm.arch = pickle")
+# r2.cmd("e log.level = 5")
 for i in tests:
     assemble_in_cache(r2, i["asm"])
     x = r2.cmd("pdPmj")
     if x == i["ret"]:
-        print ("%s PASSED" % i["name"])
+        print ("PASSED %s" % i["name"])
     else:
-        print("%s FAILED" % i["name"])
+        print("FAILED %s" % i["name"])
         print("== got ==")
         print(repr(x))
         print("== SHOULD BE ==")
