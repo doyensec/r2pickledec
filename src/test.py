@@ -95,6 +95,25 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_FLOAT","value":1.200000}],"popstack":[],"memo":[]}\n'
+    }, {
+       "name" : "Many memos work",
+       "asm" : """
+            proto 2
+            mark
+            binint1 1
+            binput 1
+            binint1 2
+            binput 2
+            binint1 3
+            binput 3
+            binint1 4
+            binput 4
+            pop_mark
+            binget 2
+            binget 4
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":15,"type":"PY_INT","value":4},{"offset":7,"type":"PY_INT","value":2}],"popstack":[{"offset":15,"type":"PY_INT","value":4},{"offset":11,"type":"PY_INT","value":3},{"offset":7,"type":"PY_INT","value":2},{"offset":3,"type":"PY_INT","value":1}],"memo":[{"index":1,"value":{"offset":3,"type":"PY_INT","value":1}},{"index":2,"value":{"offset":7,"type":"PY_INT","value":2}},{"index":3,"value":{"offset":11,"type":"PY_INT","value":3}},{"index":4,"value":{"offset":15,"type":"PY_INT","value":4}}]}\n'
     },
 ]
 
