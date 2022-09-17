@@ -41,35 +41,8 @@ static void py_obj_free(PyObj *obj) {
 	}
 }
 
-static bool _memo_len(void *user, void *data, ut32 id) {
-	ut32 *cnt = (ut32 *)user;
-	if (data) {
-		(*cnt)++;
-	}
-	return true;
-}
-
-static inline ut32 memo_len(RIDStorage *mem) {
-	r_return_val_if_fail (mem, 0);
-	ut32 ret = 0;
-	r_id_storage_foreach (mem, (RIDStorageForeachCb)_memo_len, &ret);
-	return ret;
-}
-
-static bool _memo_free(void *user, void *data, ut32 id) {
-	py_obj_free ((PyObj *) data);
-	return true;
-}
-
-static inline void memo_deep_free(RIDStorage *mem) {
-	if (mem) {
-		r_id_storage_foreach (mem, (RIDStorageForeachCb)_memo_free, NULL);
-		r_id_storage_free (mem);
-	}
-}
-
 static inline void empty_state(PMState *pvm) {
-	memo_deep_free (pvm->memo);
+	r_crbtree_free (pvm->memo);
 	r_list_free (pvm->stack);
 	r_list_free (pvm->metastack);
 	r_list_free (pvm->popstack);
@@ -84,7 +57,7 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 	pvm->stack = r_list_newf ((RListFree) py_obj_free);
 	pvm->popstack = r_list_newf ((RListFree) py_obj_free);
 	pvm->metastack = r_list_newf ((RListFree) r_list_free);
-	pvm->memo = r_id_storage_new (0, UT32_MAX);
+	pvm->memo = r_crbtree_new((RRBFree) py_obj_free);
 
 	if (!pvm->stack || !pvm->memo || !pvm->metastack) {
 		return false;
@@ -119,22 +92,41 @@ static inline PyObj *pm_stack_peek(PMState *st) {
 	return NULL;
 }
 
+static int _memo_cmp(void *incoming, void *in, void *user) {
+	ut64 test = *(ut32 *)incoming;
+	PyObj *obj = (PyObj *)in;
+	if (test > obj->memo_id) {
+		return 1;
+	}
+	return obj->memo_id == test? 0: -1;
+}
+
 // memo stuff
-static inline bool memo_put(PMState *s, ut32 loc) {
-	PyObj *obj = r_id_storage_get (s->memo, loc);
+static inline bool memo_put(PMState *pvm, st64 loc) {
+	// remove old if it exists
+	PyObj *obj = r_crbtree_take (pvm->memo, &loc, _memo_cmp, NULL);
 	if (obj) {
+		obj->memo_id = 0;
 		py_obj_free (obj);
 	}
-	obj = pm_stack_peek (s);
-	if (obj && r_id_storage_set (s->memo, obj, loc)) {
+
+	// add from top of stack
+	obj = pm_stack_peek (pvm); // will inc refcnt
+	if (obj && r_crbtree_insert (pvm->memo, obj, _memo_cmp, NULL)) {
 		R_LOG_DEBUG ("\t[++] Memo[%d]  %p", loc, obj);
+		obj->memo_id = loc;
 		return true;
 	}
+	py_obj_free (obj);
 	return false;
 }
 
-static inline bool memo_get(PMState *pvm, ut32 loc) {
-	PyObj *obj = r_id_storage_get (pvm->memo, loc);
+static inline size_t memo_len(RRBTree *tree) {
+	return tree->size;
+}
+
+static inline bool memo_get(PMState *pvm, st64 loc) {
+	PyObj *obj = r_crbtree_find(pvm->memo, &loc, _memo_cmp, NULL);
 	if (obj && r_list_push (pvm->stack, obj)) {
 		obj->refcnt++;
 		return true;
@@ -820,19 +812,17 @@ static void dump_meta_stack(PMState *pvm) {
 	}
 }
 
-static bool _memo_print_obj(void *user, void *data, ut32 id) {
-	PyObj *obj = (PyObj *)data;
-	r_cons_printf ("index: %d\n", id);
-	return dump_py_obj (obj, 1);
-}
-
 static void dump_memo(PMState *pvm) {
 	r_cons_printf ("=======================================\n");
-	ut32 len = memo_len (pvm->memo);
-	r_cons_printf ("[**] Memmo len: %u\n", len);
-	r_id_storage_foreach (pvm->memo, (RIDStorageForeachCb)_memo_print_obj, NULL);
-}
+	r_cons_printf ("[**] Memmo len: %"PFMT64d"\n", memo_len (pvm->memo));
 
+	RRBNode *node;
+	PyObj *obj;
+	r_crbtree_foreach (pvm->memo, node, PyObj, obj) {
+		r_cons_printf ("index: %"PFMT64d"\n", obj->memo_id);
+		dump_py_obj (obj, 1);
+	}
+}
 
 static inline bool dump_json(RCore *c, PMState *pvm, bool meta) {
 	PJ *pj = r_core_pj_new (c);

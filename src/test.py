@@ -78,7 +78,7 @@ tests = [
             binget 1
             stop
        """,
-       "ret" : 'TODO'
+       "ret" : '{"stack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"popstack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"memo":[{"index":1,"value":{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}}]}\n'
     },
 ]
 

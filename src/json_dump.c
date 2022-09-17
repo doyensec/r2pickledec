@@ -132,12 +132,10 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 	return ret;
 }
 
-static bool _pj_memo(void *user, void *data, ut32 id) {
-	PJ *pj = (PJ *)user;
-	PyObj *obj = (PyObj *)data;
+static inline bool memo_looper(PJ *pj, PyObj *obj) {
 	if (
 		pj_o (pj)
-		&& pj_kn (pj, "index", id)
+		&& pj_kn (pj, "index", obj->memo_id)
 		&& pj_k (pj, "value")
 		&& py_obj (pj, obj, true)
 		&& pj_end (pj)
@@ -149,11 +147,14 @@ static bool _pj_memo(void *user, void *data, ut32 id) {
 
 static inline bool pj_memo(PJ *pj, PMState *pvm) {
 	if (pj_ka (pj, "memo")) {
-		if (!pvm->memo->size || r_id_storage_foreach (pvm->memo, (RIDStorageForeachCb)_pj_memo, pj)) {
-			if (pj_end (pj)) {
-				return true;
+		RRBNode *node;
+		PyObj *obj;
+		r_crbtree_foreach (pvm->memo, node, PyObj, obj) {
+			if (!memo_looper (pj, obj)) {
+				return false;
 			}
 		}
+		return pj_end (pj)? true: false;
 	}
 	return false;
 }

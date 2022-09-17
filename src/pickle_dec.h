@@ -90,7 +90,7 @@ enum PyType {
 
 typedef struct pickle_machine_state {
 	RList *stack, *metastack, *popstack;
-	RIDStorage *memo;
+	RRBTree *memo;
 	bool break_on_stop;
 	ut64 start, offset, end;
 	bool verbose;
@@ -114,6 +114,7 @@ struct python_object {
 	int refcnt;
 	enum PyType type;
 	ut64 offset;
+	ut64 memo_id;
 	int opcode;
 	union {
 		st32 py_int;
