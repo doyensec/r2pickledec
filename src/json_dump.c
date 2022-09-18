@@ -8,7 +8,7 @@ static inline bool pj_list(PJ *pj, RList *l, bool meta) {
 	PyObj *obj;
 	RListIter *iter;
 	if (pj_a (pj)) {
-		r_list_foreach_prev (l, iter, obj) {
+		r_list_foreach (l, iter, obj) {
 			if (!py_obj (pj, obj, meta)) {
 				return false;
 			}
@@ -34,26 +34,6 @@ static inline bool py_func(PJ *pj, PyObj *obj, bool meta) {
 	  return false;
 }
 
-static inline bool py_func_r(PJ *pj, PyObj *obj, const char *n, bool meta) {
-	if (
-		pj_o (pj)
-		&& pj_k (pj, n)
-		&& py_obj (pj, obj->py_func_r.func, meta)
-		&& pj_k (pj, "args")
-		&& py_obj (pj, obj->py_func_r.args, meta)
-	) {
-		if (!obj->py_func_r.this || (
-			pj_k (pj, "this")
-			&& py_obj (pj, obj->py_func_r.this, meta)
-			&& pj_end (pj)
-		)) {
-
-			  return true;
-		  }
-	  }
-	  return false;
-}
-
 static inline bool pj_py_dict_meta(PJ *pj, RList *l) {
 	PyObj *obj;
 	RListIter *iter;
@@ -75,6 +55,39 @@ static inline bool pj_py_dict_meta(PJ *pj, RList *l) {
 		return pj_end (pj)? true: false;
 	}
 	return false;
+}
+
+
+static inline bool pj_pyop(PJ *pj, PyOper *pop, bool meta) {
+	if (
+		pj_o (pj)
+		&& pj_kn (pj, "offset", pop->offset)
+		&& pj_ks (pj, "Op", py_op_to_name (pop->op))
+		&& pj_klist (pj, "args", pop->stack, meta)
+		&& pj_end (pj)
+	) {
+		return true;
+	}
+	return false;
+}
+
+static inline bool pj_obj_what(PJ *pj, PyObj *obj, bool meta) {
+	if (!meta) {
+		R_LOG_ERROR ("Non-meta JSON for PY_WHAT is not supported yet :(");
+		return false;
+	}
+	if (!pj_a (pj)) {
+		return false;
+	}
+
+	PyOper *pop;
+	RListIter *iter;
+	r_list_foreach (obj->py_what, iter, pop) {
+		if (!pj_pyop (pj, pop, meta)) {
+			return false;
+		}
+	}
+	return pj_end (pj)? true: false;
 }
 
 static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
@@ -106,12 +119,6 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 	case PY_FUNC:
 		ret &= py_func (pj, obj, meta);
 		break;
-	case PY_FUNC_R:
-		ret &= py_func_r (pj, obj, "func", meta);
-		break;
-	case PY_NEWOBJ:
-		ret &= py_func_r (pj, obj, "cls", meta);
-		break;
 	case PY_STR:
 		ret &= pj_s (pj, obj->py_str)? true: false;
 		break;
@@ -124,10 +131,12 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 	case PY_DICT:
 		ret &= pj_py_dict_meta (pj, obj->py_iter);
 		break;
-	default:
-		R_LOG_WARN ("Invalid type %d (%s)\n", obj->type, py_type_to_name (obj->type));
-		ret = false;
+	case PY_WHAT:
+		ret &= pj_obj_what (pj, obj, meta);
 		break;
+	default:
+		r_warn_if_reached ();
+		return false;
 	}
 	if (meta) {
 		ret &= pj_end (pj)? true: false;
@@ -169,8 +178,7 @@ bool json_dump_state(PJ *pj, PMState *pvm, bool meta) {
 		&& pj_klist (pj, "stack", pvm->stack, meta)
 	) {
 		if (meta) {
-			if (!pj_klist (pj, "popstack", pvm->popstack, meta)
-			  || !pj_memo (pj, pvm)) {
+			if (!pj_klist (pj, "popstack", pvm->popstack, meta)) {
 					return false;
 			}
 		}
@@ -181,10 +189,10 @@ bool json_dump_state(PJ *pj, PMState *pvm, bool meta) {
 	return false;
 }
 
-const char *py_type_to_name(enum PyType t) {
+const char *py_type_to_name(PyType t) {
 	switch (t) {
-	case PY_NOT_RIGHT:
-		return "PY_NOT_RIGHT";
+	case PY_WHAT:
+		return "PY_WHAT";
 	case PY_NONE:
 		return "PY_NONE";
 	case PY_INT:
@@ -195,12 +203,6 @@ const char *py_type_to_name(enum PyType t) {
 		return "PY_STR";
 	case PY_FUNC:
 		return "PY_FUNC";
-	case PY_FUNC_R:
-		return "PY_FUNC_R";
-	case PY_BUILD:
-		return "PY_BUILD";
-	case PY_NEWOBJ:
-		return "PY_NEWOBJ";
 	case PY_TUPLE:
 		return "PY_TUPLE";
 	case PY_LIST:
@@ -209,8 +211,36 @@ const char *py_type_to_name(enum PyType t) {
 		return "PY_BOOL";
 	case PY_DICT:
 		return "PY_DICT";
+	case PY_NOT_RIGHT:
 	default:
 		r_warn_if_reached ();
 		return "UNKOWN";
+	}
+}
+
+const char *py_op_to_name(PyOp t) {
+	switch (t) {
+	case OP_REDUCE:
+		return "reduce";
+	case OP_BUILD:
+		return "build";
+	case OP_NEWOBJ:
+		return "newobj";
+	case OP_NEWOBJ_EX:
+		return "newobj_ex";
+	case OP_APPEND:
+		return "append";
+	case OP_SETITEM:
+		return "setitem";
+	case OP_FAKE_INIT:
+		return "Initial Object";
+	case OP_SETITEMS:
+		return "setitems";
+	case OP_APPENDS:
+		return "appends";
+	default:
+		R_LOG_ERROR ("Unkown opcode %d", t);
+		r_warn_if_reached ();
+		return "UNKOWN OPCODE";
 	}
 }

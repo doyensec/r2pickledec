@@ -1,6 +1,7 @@
 /* radare - LGPL - Copyright 2022 - bemodtwz */
+
 #define MEMO_LEN 128
-enum opcode {
+typedef enum opcode {
 	OP_MARK = '(',
 	OP_STOP = '.',
 	OP_POP = '0',
@@ -76,17 +77,19 @@ enum opcode {
 	// Protocol 5
 	OP_BYTEARRAY8 = '\x96',
 	OP_NEXT_BUFFER = '\x97',
-	OP_READONLY_BUFFER = '\x98'
-};
+	OP_READONLY_BUFFER = '\x98',
 
-enum PyType {
+	OP_FAKE_INIT // not a real opcode, just used to make code simpler
+} PyOp;
+
+typedef enum python_type {
 	PY_NOT_RIGHT = 0, // initial invalid type
-	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT,
-	PY_FUNC, PY_FUNC_R, PY_NEWOBJ, PY_BUILD,
+	PY_WHAT, // don't know what it is, just accept operations on it
+	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_FUNC,
 	PY_TUPLE, PY_LIST, PY_DICT, // iters, PY_FUNC_R could be an itter...
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
 	// pairs. No overwrites happen, to preserve data that might of been lost
-};
+} PyType;
 
 typedef struct pickle_machine_state {
 	RList *stack, *metastack, *popstack;
@@ -104,26 +107,27 @@ typedef struct python_func {
 	const char *name;
 } PyFunc;
 
-typedef struct python_func_r {
-	PyObj *this; // resolved function could be list, and thus get APPEND'd too
-	PyObj *func;
-	PyObj *args;
-} PyFuncR;
+// things you can do to a python object of unkonwn type
+typedef struct python_operator {
+	PyOp op;
+	ut64 offset;
+	RList /*PyObj**/*stack;
+} PyOper;
 
 struct python_object {
 	int refcnt;
-	enum PyType type;
+	PyType type;
 	ut64 offset;
 	ut64 memo_id;
-	int opcode;
 	union {
 		bool py_bool;
 		st32 py_int;
 		double py_float;
 		const char *py_str;
-		RList *py_iter; // tuple, list, etc...
 		double py_double;
 		PyFunc py_func;
-		PyFuncR py_func_r;
+		RList /*PyObj**/*py_iter; // tuple, list, etc...
+		RList /*PyOper**/*py_what; // this object has transcended beyond our
+								   // understanding, just go with it
 	};
 };

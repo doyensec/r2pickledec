@@ -27,12 +27,8 @@ static void py_obj_free(PyObj *obj) {
 			free ((void *)obj->py_func.module);
 			free ((void *)obj->py_func.name);
 			break;
-		case PY_BUILD:
-		case PY_NEWOBJ:
-		case PY_FUNC_R:
-			py_obj_free (obj->py_func_r.func);
-			py_obj_free (obj->py_func_r.args);
-			py_obj_free (obj->py_func_r.this);
+		case PY_WHAT:
+			r_list_free (obj->py_what);
 			break;
 		default:
 			R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
@@ -67,7 +63,7 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 }
 
 // PyObj stuff
-static inline PyObj *py_obj_new(PMState *pvm, enum PyType type) {
+static inline PyObj *py_obj_new(PMState *pvm, PyType type) {
 	PyObj *obj = R_NEW0 (PyObj);
 	if (obj) {
 		R_LOG_DEBUG ("\tObj Alloc %p", obj);
@@ -77,20 +73,134 @@ static inline PyObj *py_obj_new(PMState *pvm, enum PyType type) {
 	return obj;
 }
 
-static void inline py_obj_dup(PyObj *obj) {
-	r_return_if_fail (obj);
-	obj->refcnt++;
-}
-
-static inline PyObj *pm_stack_peek(PMState *st) {
+static inline PyObj *obj_stack_peek(RList *stack, bool dup) {
 	RListIter *iter;
 	PyObj *obj;
-	r_list_foreach_prev (st->stack, iter, obj) {
-		obj->refcnt++;
-		return obj;
+	if (stack) {
+		r_list_foreach_prev (stack, iter, obj) {
+			if (dup) {
+				obj->refcnt++;
+			}
+			return obj;
+		}
 	}
-	R_LOG_WARN ("Empty pickle stack pop attempt at 0x%lx", st->offset);
 	return NULL;
+}
+
+
+// PyWhat helpers
+static void pyop_free(PyOper *pop) {
+	if (pop) {
+		r_list_free (pop->stack);
+		free (pop);
+	}
+}
+
+static inline PyOper *py_op_new(PMState *pvm, PyOp op, bool initlist) {
+	PyOper *pop = R_NEW0 (PyOper);
+	if (pop) {
+		pop->offset = pvm->offset;
+		pop->op = op;
+		pop->stack = initlist? r_list_newf ((RListFree) py_obj_free): NULL;
+		if (!initlist || pop->stack) {
+			return pop;
+		}
+		pyop_free (pop);
+	}
+	return NULL;
+}
+
+static inline PyObj *py_what_new(PMState *pvm, PyObj *obj) {
+	PyObj *wat = py_obj_new (pvm, PY_WHAT);
+	PyOper *pop = py_op_new (pvm, OP_FAKE_INIT, true);
+
+	if (wat && pop) {
+		wat->py_what = r_list_newf ((RListFree)pyop_free);
+		if (wat->py_what && r_list_push (wat->py_what, pop)) {
+			if (r_list_push (pop->stack, obj)) {
+				return wat;
+			}
+		}
+	}
+	pyop_free (pop);
+	py_obj_free (wat);
+	return NULL;
+}
+
+// turn obj at top of `stack` into PY_WHAT, if not already, and return it
+static inline PyObj *stack_top_to_what(PMState *pvm, RList *stack) {
+	if (stack) {
+		RListIter *tail = r_list_tail (stack);
+		if (tail && tail->data) {
+			PyObj **objp = (PyObj **)&tail->data;
+			if (*objp) {
+				if ((*objp)->type == PY_WHAT) {
+					return *objp;
+				}
+				PyObj *tmp = py_what_new (pvm, *objp);
+				if (tmp) {
+					*objp = tmp;
+					return tmp;
+				}
+				py_obj_free (tmp);
+			}
+		}
+	}
+	R_LOG_ERROR ("Failed to change stack top to PY_WAHT offset: 0x%"PFMT64x, pvm->offset);
+	return NULL;
+}
+
+static inline bool py_what_addop_stack(PMState *pvm, PyOp op) {
+	if (r_list_length (pvm->metastack) > 0) {
+		RList *oldstack = r_list_pop (pvm->metastack);
+		PyOper *pop = py_op_new (pvm, op, false);
+		if (oldstack && pop) {
+			PyObj *obj = stack_top_to_what(pvm, oldstack);
+			if (obj && r_list_push (obj->py_what, pop)) {
+				pop->stack = pvm->stack;
+				pvm->stack = oldstack;
+				return true;
+			}
+		}
+		pyop_free (pop);
+	}
+	return false;
+}
+
+static inline RList *list_pop_n(RList *list, int n) {
+	RList *ret = r_list_newf ((RListFree)py_obj_free);
+	if (ret && r_list_length (list) > n) {
+		int i;
+		for (i = 0; i < n; i++) {
+			r_list_prepend (ret, r_list_pop (list));
+		}
+		return ret;
+	}
+	r_list_free (ret);
+	return NULL;
+}
+
+static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
+	r_return_val_if_fail (argc > 0, false);
+
+	PyOper *pop = py_op_new (pvm, op, false);
+	RList *args = list_pop_n (pvm->stack, argc);
+	PyObj *obj = stack_top_to_what(pvm, pvm->stack);
+
+	if (pop && args && obj) {
+		if (r_list_append (obj->py_what, pop)) {
+			pop->stack = args;
+			return true;
+		}
+	}
+
+	// cleanup
+	// join might be in wrong order...
+	if (args && !r_list_join (pvm->stack, args)) {
+		r_list_free (args);
+	}
+	pyop_free (pop);
+	return false;
 }
 
 static int _memo_cmp(void *incoming, void *in, void *user) {
@@ -122,14 +232,13 @@ static inline bool memo_put(PMState *pvm, st64 loc) {
 	obj = NULL;
 
 	// add from top of stack
-	obj = pm_stack_peek (pvm); // will inc refcnt
+	obj = obj_stack_peek (pvm->stack, true); // will inc refcnt
 	if (obj) {
 		obj->memo_id = loc;
 		if (r_crbtree_insert (pvm->memo, obj, _memo_cmp, NULL)) {
 			R_LOG_DEBUG ("\t[++] Memo[%d]  %p", loc, obj);
 			return true;
 		}
-		
 	}
 	py_obj_free (obj);
 	return false;
@@ -171,44 +280,17 @@ static inline PyObj *py_iter_new(PMState *pvm, int type) {
 	return NULL;
 }
 
-static inline RList *get_iter_list(PMState *pvm, PyObj *obj, enum PyType type) {
-	if (!obj) {
-		return NULL;
-	}
-	if (obj->type == type) {
-		return obj->py_iter;
-	} else if (obj->type == PY_FUNC_R) {
-		// resolving of python function could return anything, this is handled
-		// by the "this" field in PY_FUNC_R's
-		PyObj *this = obj->py_func_r.this;
-		if (!this) {
-			this = obj->py_func_r.this = py_iter_new (pvm, type);
-			if (!this) {
-				return NULL;
-			}
-		}
-		if (this->type == type) {
-			return this->py_iter;
-		}
-	}
-	R_LOG_ERROR ("Can't append to python of obj type %s (%d) should be %s", py_type_to_name (obj->type), obj->type, py_type_to_name (type));
-	return NULL;
-}
-
-static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, enum PyType t, const char *n) {
+static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t, const char *n) {
 	if (obj) {
-		RList *py_iter = get_iter_list (pvm, obj, t);
-		if (py_iter) {
-			RList *prev_stack = r_list_pop (pvm->metastack);
-			if (prev_stack) {
-				// current stack (everything since last MARK) shoved into iter
-				r_list_join (py_iter, pvm->stack); // ordering might be wrong...
-				// stack is then restored to before last MARK
-				pvm->stack = prev_stack;
-				return true;
-			}
-			R_LOG_ERROR ("OP: %s at 0x%"PFMT64x" No MARK to restore from", n, pvm->offset);
+		RList *prev_stack = r_list_pop (pvm->metastack);
+		if (prev_stack) {
+			// current stack (everything since last MARK) shoved into iter
+			r_list_join (obj->py_iter, pvm->stack); // ordering might be wrong...
+			// stack is then restored to before last MARK
+			pvm->stack = prev_stack;
+			return true;
 		}
+		R_LOG_ERROR ("OP: %s at 0x%"PFMT64x" No MARK to restore from", n, pvm->offset);
 	}
 	return false;
 }
@@ -232,7 +314,7 @@ static inline bool op_tuple(PMState *pvm) {
 	return false;
 }
 
-static inline bool op_iter_n(PMState *pvm, int n, enum PyType type) {
+static inline bool op_iter_n(PMState *pvm, int n, PyType type) {
 	r_return_val_if_fail (n <= 3, false);
 	PyObj *obj = py_iter_new (pvm, type);
 	if (obj) {
@@ -256,11 +338,25 @@ static inline bool op_iter_n(PMState *pvm, int n, enum PyType type) {
 	return true;
 }
 
-// pushes provided obj to iter at top of stack IFF it's of correct type.
-// top element of stack could be a resolved function that should return a list
+static inline bool stack_n_expected_type(RList *objl, int argc, PyType type) {
+	r_return_val_if_fail (argc >= 0, false);
+	PyObj *obj;
+	RListIter *iter;
+	r_list_foreach_prev (objl, iter, obj) {
+		if (argc <= 0) {
+			if (obj->type == type) {
+				return true;
+			}
+			break;
+		}
+		argc--;
+	}
+	return false;
+}
+
 static inline bool push_to_stack_iter(PMState *pvm, int type, PyObj *obj) {
-	RList *py_iter = get_iter_list (pvm, r_list_last (pvm->stack), PY_LIST);
-	if (py_iter && r_list_push (py_iter, obj)) {
+	PyObj *iterobj = r_list_last (pvm->stack);
+	if (iterobj && iterobj->type == type && r_list_push (iterobj->py_iter, obj)) {
 		return true;
 	}
 	return false;
@@ -268,13 +364,18 @@ static inline bool push_to_stack_iter(PMState *pvm, int type, PyObj *obj) {
 
 static inline bool op_append(PMState *pvm) {
 	if (r_list_length (pvm->stack) >= 2) {
-		PyObj *obj = r_list_pop (pvm->stack);
-		if (obj && push_to_stack_iter (pvm, PY_LIST, obj)) {
-			return true;
+		if (!stack_n_expected_type (pvm->stack, 1, PY_LIST)) {
+			return py_what_addop (pvm, 1, OP_APPEND);
 		}
-		// failed, try to restore state
-		if (obj && !r_list_push (pvm->stack, obj)) {
-			py_obj_free (obj);
+		PyObj *obj = r_list_pop (pvm->stack);
+		if (obj) {
+			if (push_to_stack_iter (pvm, PY_LIST, obj)) {
+				return true;
+			}
+			// failed, try to restore state
+			if (!r_list_push (pvm->stack, obj)) {
+				py_obj_free (obj);
+			}
 		}
 	}
 	return false;
@@ -285,7 +386,16 @@ static inline bool op_appends(PMState *pvm) {
 	if (prev_stack) {
 		PyObj *obj = (PyObj *)r_list_last (prev_stack);
 		if (obj) {
-			return py_iter_append_mark (pvm, obj, PY_LIST, "APPENDS");
+			if (obj->type != PY_LIST) {
+				return py_what_addop_stack (pvm, OP_APPENDS);
+			}
+			if (obj->type == PY_LIST) {
+				return py_iter_append_mark (pvm, obj, PY_LIST, "APPENDS");
+			} else {
+				R_LOG_ERROR ("can't append to non-PY_LIST yet");
+			}
+		} else {
+			R_LOG_ERROR ("No element to append to at 0x%" PFMT64x, pvm->offset);
 		}
 	}
 	return false;
@@ -293,16 +403,23 @@ static inline bool op_appends(PMState *pvm) {
 
 static inline bool op_setitem(PMState *pvm) {
 	if (r_list_length (pvm->stack) >= 3) {
+		if (!stack_n_expected_type (pvm->stack, 2, PY_DICT)) {
+			return py_what_addop (pvm, 2, OP_SETITEM);
+		}
 		PyObj *value = r_list_pop (pvm->stack);
 		PyObj *key = r_list_pop (pvm->stack);
-		RList *py_iter = get_iter_list (pvm, r_list_last (pvm->stack), PY_DICT);
-		if (value && key && py_iter) {
-			R_LOG_DEBUG ("\tappending types (%s, %s)", py_type_to_name (key->type), py_type_to_name (value->type));
-			if (r_list_push (py_iter, key)) {
-				if (r_list_push (py_iter, value)) {
-					return true;
+		PyObj *obj = r_list_last (pvm->stack);
+		if (value && key && obj) {
+			if (obj->type == PY_DICT) {
+				R_LOG_DEBUG ("\tappending types (%s, %s)", py_type_to_name (key->type), py_type_to_name (value->type));
+				if (r_list_push (obj->py_iter, key)) {
+					if (r_list_push (obj->py_iter, value)) {
+						return true;
+					}
+					r_list_pop (obj->py_iter); // prevent double free
 				}
-				r_list_pop (py_iter); // prevent double free
+			} else {
+				r_warn_if_reached ();
 			}
 		}
 		py_obj_free (key);
@@ -316,7 +433,11 @@ static inline bool op_setitems(PMState *pvm) {
 	if (prev_stack) {
 		PyObj *obj = (PyObj *)r_list_last (prev_stack);
 		if (obj) {
-			return py_iter_append_mark (pvm, obj, PY_DICT, "SETITEMS");
+			if (obj->type == PY_DICT) {
+				return py_iter_append_mark (pvm, obj, PY_DICT, "SETITEMS");
+			} else {
+				return py_what_addop_stack (pvm, OP_SETITEMS);
+			}
 		}
 	}
 	return false;
@@ -438,21 +559,6 @@ static inline bool op_global(PMState *pvm, RAnalOp *op) {
 	return false;
 }
 
-static inline bool op_reduce(PMState *pvm, enum PyType t) {
-	if (r_list_length (pvm->stack) >= 2) {
-		PyObj *obj = py_obj_new (pvm, t);
-		PyObj *args = r_list_pop (pvm->stack);
-		PyObj *func = r_list_pop (pvm->stack);
-		if (obj && args && func && r_list_push (pvm->stack, obj)) {
-			obj->py_func_r.args = args;
-			obj->py_func_r.func = func;
-			return true;
-		}
-		py_obj_free (obj);
-	}
-	return false;
-}
-
 static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	switch (code) {
 	// meta
@@ -505,12 +611,9 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_GLOBAL:
 		return op_global (pvm, op);
 	case OP_REDUCE:
-		return op_reduce (pvm, PY_FUNC_R);
 	case OP_NEWOBJ:
-		return op_reduce (pvm, PY_NEWOBJ);
 	case OP_BUILD:
-		// uh... it's complicated, see load_build in /usr/lib/python3.10/pickle.py
-		return op_reduce (pvm, PY_BUILD);
+		return py_what_addop (pvm, 1, code);
 	// tuple's
 	case OP_TUPLE:
 		return op_tuple (pvm);
@@ -610,6 +713,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 	rbuf = buf;
 	while (bsize > 0) {
 		if (pvm->break_on_stop && rbuf[0] == OP_STOP) {
+			R_LOG_DEBUG ("[0x%"PFMT64x"] OP(%02x): stop", pvm->offset, OP_STOP);
 			break;
 		}
 		RAnalOp op;
@@ -652,9 +756,6 @@ static inline bool dump_py_func(PyObj *obj, int tab) {
 }
 
 static inline bool dump_py_iter(PyObj *obj, int tab);
-static inline bool dump_py_func_r(PyObj *obj, int tab);
-static inline bool dump_py_newobj(PyObj *obj, int tab);
-static inline bool dump_py_build(PyObj *obj, int tab);
 static inline bool dump_py_dict(PyObj *obj, int tab);
 
 static inline bool dump_py_obj(PyObj *obj, int tab) {
@@ -673,12 +774,6 @@ static inline bool dump_py_obj(PyObj *obj, int tab) {
 		break;
 	case PY_FUNC:
 		return dump_py_func (obj, tab);
-	case PY_FUNC_R:
-		return dump_py_func_r (obj, tab);
-	case PY_NEWOBJ:
-		return dump_py_newobj (obj, tab);
-	case PY_BUILD:
-		return dump_py_build (obj, tab);
 	case PY_STR:
 		print_tabs (tab);
 		r_cons_printf ("%s%s", obj->py_str, dump_nl (tab));
@@ -697,55 +792,6 @@ static inline bool dump_py_obj(PyObj *obj, int tab) {
 		return false;
 	}
 	return true;
-}
-
-static inline bool dump_py_func_r(PyObj *obj, int tab) {
-	print_tabs (tab);
-	r_cons_printf ("__reduce__(\n");
-	if (
-		dump_py_obj (obj->py_func_r.func, tab + 1)
-		&& dump_py_obj (obj->py_func_r.args, tab + 1)
-	) {
-		if (
-			!obj->py_func_r.this
-			|| dump_py_obj (obj->py_func_r.this, tab + 1)
-		) {
-			print_tabs (tab);
-			r_cons_printf (")\n");
-			return true;
-		}
-	}
-	return false;
-}
-
-// XXX: terrible, makes me angry, fix it when less mad :)
-static inline bool dump_py_newobj(PyObj *obj, int tab) {
-	bool ret = true;
-	print_tabs (tab);
-	ret &= dump_py_obj (obj->py_func_r.func, ST32_MIN);
-	r_cons_printf (".__new__(");
-	ret &= dump_py_obj (obj->py_func_r.func, ST32_MIN);
-	r_cons_printf ("===\n");
-	ret &= dump_py_obj (obj->py_func_r.args, tab);
-	if (ret && (!obj->py_func_r.this || dump_py_obj (obj->py_func_r.this, tab + 1))) {
-		return true;
-	}
-	return ret;
-}
-
-// TODO: prbly combine with newobj
-static inline bool dump_py_build(PyObj *obj, int tab) {
-	bool ret = true;
-	print_tabs (tab);
-	ret &= dump_py_obj (obj->py_func_r.func, ST32_MIN);
-	r_cons_printf (".__setstate__(");
-	ret &= dump_py_obj (obj->py_func_r.func, ST32_MIN);
-	r_cons_printf ("===\n");
-	ret &= dump_py_obj (obj->py_func_r.args, tab);
-	if (ret && (!obj->py_func_r.this || dump_py_obj (obj->py_func_r.this, tab + 1))) {
-		return true;
-	}
-	return ret;
 }
 
 static inline bool dump_py_iter(PyObj *obj, int tab) {
