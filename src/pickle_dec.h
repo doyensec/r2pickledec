@@ -1,4 +1,7 @@
 /* radare - LGPL - Copyright 2022 - bemodtwz */
+#ifndef PICKLE_DEC
+#define PICKLE_DEC
+#include <r_core.h>
 
 #define MEMO_LEN 128
 typedef enum opcode {
@@ -119,6 +122,7 @@ struct python_object {
 	PyType type;
 	ut64 offset;
 	ut64 memo_id;
+	char *varname; // used by printer
 	union {
 		bool py_bool;
 		st32 py_int;
@@ -131,3 +135,4 @@ struct python_object {
 								   // understanding, just go with it
 	};
 };
+#endif

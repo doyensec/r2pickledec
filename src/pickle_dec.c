@@ -8,6 +8,7 @@
 // Free stuff
 static void py_obj_free(PyObj *obj) {
 	if (obj && obj->refcnt-- <= 0) {
+		free (obj->varname);
 		R_LOG_DEBUG ("Obj fully free: %p", obj);
 		switch (obj->type) {
 		case PY_STR:
@@ -223,6 +224,9 @@ static int _memo_int_cmp(void *incoming, void *in, void *user) {
 
 // memo stuff
 static inline bool memo_put(PMState *pvm, st64 loc) {
+	if (loc <= 0) {
+		return false;
+	}
 	// remove old if it exists
 	PyObj *obj = r_crbtree_take (pvm->memo, &loc, _memo_int_cmp, NULL);
 	if (obj) {
@@ -692,6 +696,10 @@ static inline ut64 get_buff(ut64 offset, RIO *io, ut8 **buf) {
 	// TODO: this probably only works if the pickle is the only thing in the file
 	*buf = NULL;
 	ut64 bsize = r_io_size (io);
+	if (!bsize) {
+		R_LOG_ERROR ("File size is 0");
+		return 0;
+	}
 	if (bsize > offset) {
 		bsize -= offset;
 		*buf = malloc (bsize);
@@ -738,175 +746,6 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 	return true;
 }
 
-static inline void print_tabs(int tab) {
-	while (tab > 0) {
-		r_cons_printf (TAB);
-		tab--;
-	}
-}
-
-static inline const char *dump_nl(int tab) {
-	return tab >= 0? ",\n": ", ";
-}
-
-static inline bool dump_py_func(PyObj *obj, int tab) {
-	print_tabs (tab);
-	r_cons_printf ("__import__('%s').%s\n", obj->py_func.module, obj->py_func.name);
-	return true;
-}
-
-static inline bool dump_py_iter(PyObj *obj, int tab);
-static inline bool dump_py_dict(PyObj *obj, int tab);
-
-static inline bool dump_py_obj(PyObj *obj, int tab) {
-	switch (obj->type) {
-	case PY_INT:
-		print_tabs (tab);
-		r_cons_printf ("%d%s", obj->py_int, dump_nl (tab));
-		break;
-	case PY_FLOAT:
-		print_tabs (tab);
-		r_cons_printf ("%lf%s", obj->py_float, dump_nl (tab));
-		break;
-	case PY_NONE:
-		print_tabs (tab);
-		r_cons_printf ("None%s", dump_nl (tab));
-		break;
-	case PY_FUNC:
-		return dump_py_func (obj, tab);
-	case PY_STR:
-		print_tabs (tab);
-		r_cons_printf ("%s%s", obj->py_str, dump_nl (tab));
-		break;
-	case PY_LIST:
-	case PY_TUPLE:
-		return dump_py_iter (obj, tab);
-	case PY_DICT:
-		return dump_py_dict (obj, tab);
-	case PY_BOOL:
-		print_tabs (tab);
-		r_cons_printf ("%s%s", obj->py_bool? "True": "False", dump_nl (tab));
-		break;
-	default:
-		R_LOG_ERROR ("Can't handle type %s", py_type_to_name(obj->type))
-		return false;
-	}
-	return true;
-}
-
-static inline bool dump_py_iter(PyObj *obj, int tab) {
-	char *start, *end;
-	switch (obj->type) {
-	case PY_LIST:
-		start = "[\n";
-		end = "]\n";
-		break;
-	case PY_TUPLE:
-		start = "(\n";
-		end = ")\n";
-		break;
-	default:
-		r_warn_if_reached ();
-		return false;
-	}
-	print_tabs (tab);
-	r_cons_printf (start);
-
-	bool ret = true;
-	RListIter *iter;
-	PyObj *o;
-	r_list_foreach (obj->py_iter, iter, o) {
-		ret &= dump_py_obj (o, tab + 1);
-		if (!ret) {
-			break;
-		}
-	}
-
-	print_tabs (tab);
-	r_cons_printf (end);
-	return ret;
-}
-
-static inline bool dump_py_dict(PyObj *obj, int tab) {
-	RListIter *iter;
-	PyObj *o;
-	bool ret = true;
-	bool top = true;
-
-	print_tabs (tab);
-	r_cons_printf ("{\n");
-	tab++;
-	r_list_foreach (obj->py_iter, iter, o) {
-		if (top) {
-			print_tabs (tab);
-			r_cons_printf ("(\n");
-		}
-		ret &= dump_py_obj (o, tab + 1);
-		if (!top) {
-			print_tabs (tab);
-			r_cons_printf (")\n");
-		}
-		if (!ret) {
-			break;
-		}
-		top = !top;
-	}
-	tab--;
-
-	print_tabs (tab);
-	r_cons_printf ("}\n");
-	return ret;
-}
-
-static void dump_stack(PMState *pvm, bool popstack) {
-	r_cons_printf ("=======================================\n");
-	char *name = "stack";
-	RList *l = pvm->stack;
-	if (popstack) {
-		name = "popstack";
-		l = pvm->popstack;
-	}
-	r_cons_printf ("[**] %s len: %d\n", name, r_list_length (l));
-	PyObj *obj;
-	RListIter *iter;
-	r_list_foreach (l, iter, obj) {
-		if (!dump_py_obj (obj, 0)) {
-			return;
-		}
-	}
-}
-
-static void dump_meta_stack(PMState *pvm) {
-	r_cons_printf ("=======================================\n");
-	r_cons_printf ("[**] METAstack: %d\n", r_list_length (pvm->metastack));
-	RList *l;
-	RListIter *iter;
-	int i = 0;
-	r_list_foreach (pvm->metastack, iter, l) {
-		RListIter *iter2;
-		PyObj *obj;
-		r_cons_printf ("[%d] stack len: %d\n", i, r_list_length (l));
-		i++;
-		r_list_foreach (l, iter2, obj) {
-			if (!dump_py_obj (obj, 0)) {
-				return;
-			}
-		}
-	}
-}
-
-static void dump_memo(PMState *pvm) {
-	r_cons_printf ("=======================================\n");
-	r_cons_printf ("[**] Memmo len: %"PFMT64d"\n", memo_len (pvm->memo));
-
-	RRBNode *node;
-	PyObj *obj;
-	r_crbtree_foreach (pvm->memo, node, PyObj, obj) {
-		r_cons_printf ("index: %"PFMT64d"\n", obj->memo_id);
-		dump_py_obj (obj, 1);
-	}
-}
-
 static inline bool dump_json(RCore *c, PMState *pvm, bool meta) {
 	PJ *pj = r_core_pj_new (c);
 	if (pj && json_dump_state (pj, pvm, meta)) {
@@ -930,10 +769,11 @@ static int pickle_dec(void *user, const char *input) {
 		if (strchr (input, 'j')) {
 			dump_json(c, &state, strchr (input, 'm')? true: false);
 		} else {
-			dump_meta_stack (&state);
-			dump_memo (&state);
-			dump_stack (&state, true);
-			dump_stack (&state, false);
+			PrintInfo nfo = {0};
+			nfo.stack = true;
+			if (!dump_machine(&state, &nfo)) {
+				R_LOG_ERROR ("Failed to dump pickle");
+			}
 		}
 	}
 	r_cons_flush ();
