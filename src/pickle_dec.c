@@ -39,8 +39,12 @@ static void py_obj_free(PyObj *obj) {
 	}
 }
 
-static inline void empty_state(PMState *pvm) {
+static inline void empty_memo (PMState *pvm) {
 	r_crbtree_free (pvm->memo);
+	pvm->memo = NULL;
+}
+static inline void empty_state(PMState *pvm) {
+	empty_memo (pvm);
 	r_list_free (pvm->stack);
 	r_list_free (pvm->metastack);
 	r_list_free (pvm->popstack);
@@ -246,6 +250,10 @@ static inline bool memo_put(PMState *pvm, st64 loc) {
 	}
 	py_obj_free (obj);
 	return false;
+}
+
+static inline bool op_memorize(PMState *pvm) {
+	return memo_put (pvm, pvm->memo->size + 1);
 }
 
 static inline size_t memo_len(RRBTree *tree) {
@@ -649,6 +657,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_NEWFALSE:
 		return op_newbool (pvm, false);
 	// memo
+	case OP_MEMOIZE:
+		return op_memorize (pvm);
 	case OP_LONG_BINPUT:
 	case OP_BINPUT:
 		return memo_put (pvm, op->val);
@@ -679,7 +689,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_FROZENSET:
 	case OP_NEWOBJ_EX:
 	case OP_STACK_GLOBAL:
-	case OP_MEMOIZE:
 	case OP_NEXT_BUFFER:
 	case OP_READONLY_BUFFER:
 
@@ -766,6 +775,7 @@ static int pickle_dec(void *user, const char *input) {
 	if (init_machine_state (c, &state)) {
 		state.break_on_stop = true;
 		run_pvm (c, &state);
+		empty_memo (&state);
 		if (strchr (input, 'j')) {
 			dump_json(c, &state, strchr (input, 'm')? true: false);
 		} else {

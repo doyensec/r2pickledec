@@ -203,6 +203,38 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"\\"test_key\\""},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"\\"test_key2\\""},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"\\"test_key3\\""},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
+    }, {
+       "name" : "memorize",
+       "asm" : """
+
+            proto 0x2
+            binint1 1
+            memoize
+            binint1 2
+            memoize
+            binint1 3
+            memoize
+            pop
+            pop
+            pop
+            binget 1
+            binget 2
+            binget 3
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":1},{"offset":5,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}],"popstack":[{"offset":8,"type":"PY_INT","value":3},{"offset":5,"type":"PY_INT","value":2},{"offset":2,"type":"PY_INT","value":1}]}\n'
+    }, {
+       "name" : "memorize uses sizeof memopad",
+       "asm" : """
+            proto 0x4
+            binint1 1
+            binput 32
+            binint1 2
+            memoize
+            binput 2
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2}],"popstack":[]}\n'
     }
 ]
 
