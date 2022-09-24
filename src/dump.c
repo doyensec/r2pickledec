@@ -110,11 +110,6 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 
 	if (nfo->first) {
 		if (obj->varname) {
-			if (nfo->verbose) { // debug
-				if (!printer_appendf (nfo, "# %s previously declared\n", obj->varname)) {
-					return -1;
-				}
-			}
 			return 1;
 		}
 		const char *var = obj_varname (nfo, obj);
@@ -266,7 +261,7 @@ static inline bool dump_func(PrintInfo *nfo, PyObj *obj) {
 	return ret;
 }
 
-static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, RStrBuf *pre, const char *vn) {
+static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	if (
 		!printer_appendf (nfo, "%s = ", vn)
 		|| !dump_obj (nfo, r_list_last (pop->stack))
@@ -277,44 +272,99 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, RStrBuf *pre, con
 	return true;
 }
 
-static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, RStrBuf *pre, const char *vn) {
+static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	PyObj *args = r_list_last (pop->stack);
-	if (args && args->type != PY_TUPLE) {
-		R_LOG_ERROR ("Reduce requires tuple")
-	} else if (
-		!printer_appendf (nfo, "%s = %s", vn, vn)
-		|| !dump_obj (nfo, args)
-		|| !printer_append (nfo, "\n")
-	) {
-		return false;
+	if (args) {
+		return printer_appendf (nfo, "%s = %s(", vn, vn)
+			&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
+	}
+	return false;
+}
+
+static inline bool dump_oper_newobj(PrintInfo *nfo, PyOper *pop, const char *vn) {
+	PyObj *args = r_list_last (pop->stack);
+	if (args) {
+		return printer_appendf (nfo, "%s = %s.__new__(%s, *", vn, vn, vn)
+			&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
+	}
+	return false;
+}
+
+static inline bool dump_oper_build(PrintInfo *nfo, PyOper *pop, const char *vn) {
+	PyObj *args = r_list_last (pop->stack);
+	if (args) {
+		return printer_appendf (nfo, "%s.__setstate__(", vn)
+			&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
+	}
+	return false;
+}
+
+
+static inline bool dump_oper_append(PrintInfo *nfo, PyObj *obj, const char *vn) {
+	if (obj) {
+		return printer_appendf (nfo, "%s.append(", vn)
+			&& dump_obj (nfo, obj) && printer_append (nfo, ")\n");
+	}
+	return false;
+}
+
+static inline bool dump_oper_appends(PrintInfo *nfo, PyOper *pop, const char *vn) {
+	PyObj *obj;
+	RListIter *iter;
+	r_list_foreach (pop->stack, iter, obj) {
+		if (!dump_oper_append (nfo, obj, vn)) {
+			return false;
+		}
 	}
 	return true;
 }
 
-static inline bool dump_oper_newobj(PrintInfo *nfo, PyOper *pop, RStrBuf *pre, const char *vn) {
-	PyObj *args = r_list_last (pop->stack);
-	if (args->type != PY_TUPLE) {
-		R_LOG_ERROR ("Reduce requires tuple")
-	} else if (
-		!printer_appendf (nfo, "%s = %s.__new__(%s, *", vn, vn, vn)
-		|| !dump_obj (nfo, args)
-		|| !printer_append (nfo, ")\n")
-	) {
-		return false;
+static inline bool dump_oper_setitems(PrintInfo *nfo, PyOper *pop, const char *vn) {
+	r_return_val_if_fail (!(r_list_length (pop->stack) % 2), false);
+	bool iskey = true;
+	PyObj *obj;
+	RListIter *iter;
+	r_list_foreach (pop->stack, iter, obj) {
+		if (iskey) { // start
+			if (!printer_appendf (nfo, "%s[", vn)) {
+				return false;
+			}
+		} else if (!printer_append (nfo, "] = ")) {// middle
+			return false;
+		}
+
+		// key/value
+		if (!dump_obj (nfo, obj)) {
+			return false;
+		}
+
+		if (!iskey && !printer_append (nfo, "\n")) { // end
+			return false;
+		}
+		iskey = !iskey;
 	}
 	return true;
 }
 
-static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, RStrBuf *pre, const char *vn) {
+static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	switch (pop->op) {
 	case OP_FAKE_INIT:
-		return dump_oper_init (nfo, pop, pre, vn);
+		return dump_oper_init (nfo, pop, vn);
 	case OP_REDUCE:
-		return dump_oper_reduce (nfo, pop, pre, vn);
+		return dump_oper_reduce (nfo, pop, vn);
 	case OP_NEWOBJ:
-		return dump_oper_newobj (nfo, pop, pre, vn);
+		return dump_oper_newobj (nfo, pop, vn);
+	case OP_BUILD:
+		return dump_oper_build (nfo, pop, vn);
+	case OP_APPEND:
+		return dump_oper_append (nfo, r_list_last (pop->stack), vn);
+	case OP_APPENDS:
+		return dump_oper_appends (nfo, pop, vn);
+	case OP_SETITEM:
+	case OP_SETITEMS:
+		return dump_oper_setitems (nfo, pop, vn);
 	default:
-		R_LOG_ERROR ("Can't parse type %s (%02x) yet", py_op_to_name (pop->op), pop->op & 0xff);
+		R_LOG_ERROR ("Python dumper Can't handle %s (%02x) operator yet", py_op_to_name (pop->op), pop->op & 0xff);
 	}
 	return false;
 }
@@ -326,61 +376,34 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 		}
 		return prepend_obj (nfo, obj);
 	}
-	// it is first object
+
+	// obj is start of a line
 	if (obj->varname) {
-		if (nfo->ret && !printer_append (nfo, "return ")) {
-			return false;
-		}
-
-		if (nfo->ret && printer_appendf (nfo, "return %s\n", obj->varname)) {
-			return true;
+		if (nfo->ret) {
+			return printer_appendf (nfo, "return %s\n", obj->varname);
 		} else {
-
+			return true; // already init previously
 		}
 	}
-	// populate obj->varname
-	if (!obj_varname (nfo, obj)) {
+
+	// obj is unseen and starts a line, might be a return
+	if (!obj_varname (nfo, obj)) { // populate obj->varname
 		return false;
 	}
-
-	RStrBuf *pre = printer_getout (nfo); // for prepending objects
-	if (!pre) {
-		return false;
-	}
-	nfo->out = NULL; // will be auto populated, joined with pre before leaving
-
-	bool nforet = nfo->ret; // save state, we know nfo->first is true
+	bool saveret = nfo->ret;
 	nfo->ret = false;
 	nfo->first = false;
 
-	bool ret = true;
 	PyOper *pop;
 	RListIter *iter;
 	r_list_foreach (obj->py_what, iter, pop) {
-		if (!dump_oper (nfo, pop, pre, obj->varname)) {
-			ret = false;
-			break;
+		if (!dump_oper (nfo, pop, obj->varname)) {
+			return false;
 		}
 	}
+	nfo->ret = saveret;
 	nfo->first = true;
-	nfo->ret = nforet;
-	if (ret) {
-		if (nfo->ret) {
-			ret &= printer_appendf (nfo, "return %s\n", obj->varname);
-		}
-
-		// combine pre and out
-		if (r_strbuf_length (nfo->out)) {
-			char *buf = r_strbuf_drain (nfo->out);
-			nfo->out = pre;
-			if (!buf) {
-				return false;
-			}
-			ret &= printer_append (nfo, buf);
-			free (buf);
-		}
-	}
-	return ret;
+	return nfo->ret? dump_what (nfo, obj): true;
 }
 
 bool dump_obj(PrintInfo *nfo, PyObj *obj) {
@@ -406,7 +429,7 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	case PY_WHAT:
 		return dump_what (nfo, obj);
 	default:
-		R_LOG_ERROR ("Can't handle type %s", py_type_to_name(obj->type))
+		R_LOG_ERROR ("Python dumper can't handle type %s yet", py_type_to_name(obj->type))
 	}
 	return false;
 }
@@ -436,8 +459,7 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 	return true;
 }
 
-bool dump_machine(PMState *pvm, PrintInfo *nfo) {
-	nfo->verbose = true; // temp for debuging
+bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 	nfo->outstack = r_list_newf ((RListFree)r_strbuf_free);
 	if (!nfo->outstack) {
 		return false;
@@ -447,6 +469,9 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo) {
 		ret &= dump_stack (nfo, pvm->stack, "VM");
 	}
 	printer_drain_free (nfo);
+	if (!ret || warn) {
+		r_cons_printf ("Raise Exception('INCOMPLETE!!! Pickle did not completely extract, check error log')\n");
+	}
 	return ret;
 }
 

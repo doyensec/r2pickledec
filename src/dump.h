@@ -18,7 +18,7 @@ typedef struct print_info {
 } PrintInfo;
 
 bool dump_obj(PrintInfo *nfo, PyObj *obj);
-bool dump_machine(PMState *pvm, PrintInfo *nfo);
+bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn);
 void print_info_clean(PrintInfo *nfo);
 bool print_info_init(PrintInfo *nfo);
 const char *py_type_to_name(PyType t);

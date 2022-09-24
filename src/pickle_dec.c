@@ -228,7 +228,7 @@ static int _memo_int_cmp(void *incoming, void *in, void *user) {
 
 // memo stuff
 static inline bool memo_put(PMState *pvm, st64 loc) {
-	if (loc <= 0) {
+	if (loc < 0) {
 		return false;
 	}
 	// remove old if it exists
@@ -774,14 +774,14 @@ static int pickle_dec(void *user, const char *input) {
 	PMState state = {0};
 	if (init_machine_state (c, &state)) {
 		state.break_on_stop = true;
-		run_pvm (c, &state);
+		bool pvm_fin = run_pvm (c, &state);
 		empty_memo (&state);
 		if (strchr (input, 'j')) {
 			dump_json(c, &state, strchr (input, 'm')? true: false);
 		} else {
 			PrintInfo nfo = {0};
 			nfo.stack = true;
-			if (!dump_machine(&state, &nfo)) {
+			if (!dump_machine(&state, &nfo, !pvm_fin)) {
 				R_LOG_ERROR ("Failed to dump pickle");
 			}
 		}
