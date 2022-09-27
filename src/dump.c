@@ -61,6 +61,7 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 	r_return_val_if_fail (!nfo->first, false);
 	// save old state
 	bool nforet = nfo->ret;
+	int tabs = nfo->tabs;
 	if (!r_list_push (nfo->outstack, nfo->out)) {
 		return false;
 	}
@@ -69,6 +70,7 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 	nfo->first = true;
 	nfo->ret = false;
 	nfo->out = NULL;
+	nfo->tabs = 0;
 
 	bool ret = dump_obj (nfo, obj);
 
@@ -77,6 +79,7 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 	nfo->out = r_list_pop (nfo->outstack);
 	nfo->first = false;
 	nfo->ret = nforet;
+	nfo->tabs = tabs;
 
 	if (ret) {
 		return printer_append (nfo, obj->varname);
@@ -175,6 +178,19 @@ static inline bool dump_none(PrintInfo *nfo, PyObj *obj) {
 	return ret;
 }
 
+static inline bool print_tabs(PrintInfo *nfo) {
+	int i;
+	if (!printer_append (nfo, "\n")) {
+		return false;
+	}
+	for (i = 0; i < nfo->tabs; i++) {
+		if (!printer_append (nfo, "\t")) {
+			return false;
+		}
+	}
+	return true;
+}
+
 static inline bool dump_iter(PrintInfo *nfo, PyObj *obj_iter) {
 	// recursees, so save and modify nfo state
 	bool nfofirst = nfo->first;
@@ -182,10 +198,19 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj_iter) {
 	nfo->first = false;
 	nfo->ret = false;
 
+	bool tabbed = false;
+	if (r_list_length (obj_iter->py_iter) > 3) {
+		tabbed = true;
+		nfo->tabs++;
+	}
+
 	bool ret = true;
 	PyObj *obj;
 	RListIter *iter;
 	r_list_foreach (obj_iter->py_iter, iter, obj) {
+		if (tabbed) {
+			ret &= print_tabs (nfo);
+		}
 		ret &= dump_obj (nfo, obj);
 		if (!ret) {
 			break;
@@ -193,6 +218,10 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj_iter) {
 		if (iter != r_list_tail (obj_iter->py_iter)) {
 			ret &= printer_append (nfo, ", ");
 		}
+	}
+	if (tabbed) {
+		nfo->tabs--;
+		ret &= print_tabs (nfo);
 	}
 	nfo->first = nfofirst;
 	nfo->ret = nforet;
@@ -224,11 +253,20 @@ static inline bool dump_iter_dict(PrintInfo *nfo, PyObj *obj_iter) {
 	nfo->first = false;
 	nfo->ret = false;
 
+	bool tabbed = false;
+	if (r_list_length (obj_iter->py_iter) > 2) {
+		tabbed = true;
+		nfo->tabs++;
+	}
+
 	bool onkey = true;
 	bool ret = true;
 	PyObj *obj;
 	RListIter *iter;
 	r_list_foreach (obj_iter->py_iter, iter, obj) {
+		if (tabbed && onkey) {
+			ret &= print_tabs (nfo);
+		}
 		ret &= dump_obj (nfo, obj);
 		if (!ret) {
 			break;
@@ -239,6 +277,10 @@ static inline bool dump_iter_dict(PrintInfo *nfo, PyObj *obj_iter) {
 			ret &= printer_append (nfo, ", ");
 		}
 		onkey = !onkey;
+	}
+	if (tabbed) {
+		nfo->tabs--;
+		ret &= print_tabs (nfo);
 	}
 	nfo->first = nfofirst;
 	nfo->ret = nforet;
