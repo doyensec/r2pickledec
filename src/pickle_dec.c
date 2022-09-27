@@ -779,12 +779,11 @@ static int pickle_dec(void *user, const char *input) {
 		if (strchr (input, 'j')) {
 			dump_json(c, &state, strchr (input, 'm')? true: false);
 		} else {
-			PrintInfo nfo = {0};
-			nfo.stack = true;
-			nfo.popstack = true;
-			if (!dump_machine(&state, &nfo, !pvm_fin)) {
+			PrintInfo nfo;
+			if (!print_info_init (&nfo, c) || !dump_machine(&state, &nfo, !pvm_fin)) {
 				R_LOG_ERROR ("Failed to dump pickle");
 			}
+			print_info_clean (&nfo);
 		}
 	}
 	r_cons_flush ();

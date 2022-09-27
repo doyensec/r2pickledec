@@ -10,6 +10,7 @@ typedef struct print_info {
 	bool ret; // used by printer to check if this is the last thing
 	bool first;
 	int tabs;
+	RConsPrintablePalette *pal;
 
 	bool verbose;
 
@@ -20,7 +21,7 @@ typedef struct print_info {
 bool dump_obj(PrintInfo *nfo, PyObj *obj);
 bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn);
 void print_info_clean(PrintInfo *nfo);
-bool print_info_init(PrintInfo *nfo);
+bool print_info_init(PrintInfo *nfo, RCore *core);
 const char *py_type_to_name(PyType t);
 const char *py_op_to_name(PyOp t);
 #endif
