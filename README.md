@@ -5,7 +5,7 @@ Still in beta
 ### building
 
 ```
-$ export PKG_CONFIG_PATH=~/radare2/pkgcfg/
+$ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/
 $ make
 $ make install
 ```
