@@ -5,7 +5,6 @@
 
 typedef struct print_info {
 	bool stack, popstack, metastack;
-	bool stack_lastonly;
 	
 	st64 varid; // used to ensure variable names are unique
 	bool ret; // used by printer to check if this is the last thing

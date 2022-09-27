@@ -781,6 +781,7 @@ static int pickle_dec(void *user, const char *input) {
 		} else {
 			PrintInfo nfo = {0};
 			nfo.stack = true;
+			nfo.popstack = true;
 			if (!dump_machine(&state, &nfo, !pvm_fin)) {
 				R_LOG_ERROR ("Failed to dump pickle");
 			}

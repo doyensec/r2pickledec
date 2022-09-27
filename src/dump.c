@@ -437,18 +437,19 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 	int len = r_list_length (stack);
 	if (len == 0) {
-		printer_appendf (nfo, "## stack %s empty\n", n);
+		printer_appendf (nfo, "## %s stack empty\n", n);
+		return true;
 	}
 	RListIter *iter;
 	PyObj *obj;
-	printer_appendf (nfo, "## Stack %s start, len %d\n", n, len);
+	printer_appendf (nfo, "## %s stack start, len %d\n", n, len);
 	r_list_foreach (stack, iter, obj) {
 		len--;
 		printer_appendf (nfo, "## %s[%d] %s\n", n, len, len == 0? "TOP": "");
 		printer_drain (nfo);
 
 		nfo->first = true;
-		if (len == 0) {
+		if (len == 0 && !strcmp (n, "VM")) {
 			nfo->ret = true;
 		}
 		if (!dump_obj (nfo, obj)) {
@@ -465,6 +466,9 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 		return false;
 	}
 	bool ret = true;
+	if (nfo->popstack) {
+		ret &= dump_stack (nfo, pvm->popstack, "POP");
+	}
 	if (nfo->stack) {
 		ret &= dump_stack (nfo, pvm->stack, "VM");
 	}
