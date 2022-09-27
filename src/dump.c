@@ -50,8 +50,11 @@ static inline bool printer_appendf(PrintInfo *nfo, const char *fmt, ...) {
 
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 	if (!obj->varname) {
-		st64 num = obj->memo_id? obj->memo_id: nfo->varid++;
-		obj->varname = r_str_newf ("var_%"PFMT64x, num);
+		if (obj->memo_id > 0) {
+			obj->varname = r_str_newf ("memo_%"PFMT64x, obj->memo_id);
+		} else {
+			obj->varname = r_str_newf ("var_%"PFMT64x, nfo->varid++);
+		}
 	}
 	return obj->varname;
 }
