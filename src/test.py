@@ -246,6 +246,19 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":6,"type":"PY_LIST","value":[{"offset":3,"type":"PY_INT","value":42},{"offset":5,"type":"PY_BOOL","value":true}]}],"popstack":[]}\n'
+    }, {
+       "name" : "Test list",
+       "asm" : """
+            proto 4
+            mark
+            BINSTRING "first_key"
+            BINSTRING "value"
+            BINSTRING "key2"
+            newtrue
+            dict
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":37,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"\\"first_key\\""},{"offset":17,"type":"PY_STR","value":"\\"value\\""}],[{"offset":27,"type":"PY_STR","value":"\\"key2\\""},{"offset":36,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
     }
 ]
 

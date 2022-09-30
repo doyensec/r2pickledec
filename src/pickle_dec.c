@@ -293,7 +293,11 @@ static inline PyObj *py_iter_new(PMState *pvm, int type) {
 }
 
 static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t) {
-	if (obj) {
+	if (obj && obj->type == t) {
+		if (t == PY_DICT && r_list_length (pvm->stack) % 2) {
+			R_LOG_ERROR ("Can't put key without value in dict");
+			return false;
+		}
 		RList *prev_stack = r_list_pop (pvm->metastack);
 		if (prev_stack) {
 			// current stack (everything since last MARK) shoved into iter
@@ -662,6 +666,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_setitem (pvm);
 	case OP_SETITEMS:
 		return op_setitems (pvm);
+	case OP_DICT:
+		return op_type_create_append (pvm, PY_DICT);
 	// bools
 	case OP_NEWTRUE:
 		return op_newbool (pvm, true);
@@ -686,7 +692,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_BINPERSID:
 	case OP_STRING:
 	case OP_UNICODE:
-	case OP_DICT:
 	case OP_GET:
 	case OP_OBJ:
 	case OP_PUT:
