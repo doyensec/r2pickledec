@@ -235,6 +235,17 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2}],"popstack":[]}\n'
+    }, {
+       "name" : "Test list",
+       "asm" : """
+            proto 4
+            mark
+            binint1 42
+            newtrue
+            list
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":6,"type":"PY_LIST","value":[{"offset":3,"type":"PY_INT","value":42},{"offset":5,"type":"PY_BOOL","value":true}]}],"popstack":[]}\n'
     }
 ]
 

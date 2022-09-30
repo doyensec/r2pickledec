@@ -292,7 +292,7 @@ static inline PyObj *py_iter_new(PMState *pvm, int type) {
 	return NULL;
 }
 
-static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t, const char *n) {
+static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t) {
 	if (obj) {
 		RList *prev_stack = r_list_pop (pvm->metastack);
 		if (prev_stack) {
@@ -302,7 +302,6 @@ static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t, const
 			pvm->stack = prev_stack;
 			return true;
 		}
-		R_LOG_ERROR ("OP: %s at 0x%"PFMT64x" No MARK to restore from", n, pvm->offset);
 	}
 	return false;
 }
@@ -317,9 +316,10 @@ static inline bool op_newbool(PMState *pvm, bool py_bool) {
 	return false;
 }
 
-static inline bool op_tuple(PMState *pvm) {
-	PyObj *obj = py_iter_new (pvm, PY_TUPLE);
-	if (py_iter_append_mark (pvm, obj, PY_TUPLE, "TUPLE") && r_list_append (pvm->stack, obj)) {
+
+static inline bool op_type_create_append(PMState *pvm, PyType t) {
+	PyObj *obj = py_iter_new (pvm, t);
+	if (py_iter_append_mark (pvm, obj, t) && r_list_append (pvm->stack, obj)) {
 		return true;
 	}
 	py_obj_free (obj);
@@ -402,7 +402,7 @@ static inline bool op_appends(PMState *pvm) {
 				return py_what_addop_stack (pvm, OP_APPENDS);
 			}
 			if (obj->type == PY_LIST) {
-				return py_iter_append_mark (pvm, obj, PY_LIST, "APPENDS");
+				return py_iter_append_mark (pvm, obj, PY_LIST);
 			} else {
 				R_LOG_ERROR ("can't append to non-PY_LIST yet");
 			}
@@ -410,6 +410,15 @@ static inline bool op_appends(PMState *pvm) {
 			R_LOG_ERROR ("No element to append to at 0x%" PFMT64x, pvm->offset);
 		}
 	}
+	return false;
+}
+
+static inline bool op_list(PMState *pvm) {
+	PyObj *obj = py_iter_new (pvm, PY_LIST);
+	if (py_iter_append_mark (pvm, obj, PY_LIST) && r_list_append (pvm->stack, obj)) {
+		return true;
+	}
+	py_obj_free (obj);
 	return false;
 }
 
@@ -446,7 +455,7 @@ static inline bool op_setitems(PMState *pvm) {
 		PyObj *obj = (PyObj *)r_list_last (prev_stack);
 		if (obj) {
 			if (obj->type == PY_DICT) {
-				return py_iter_append_mark (pvm, obj, PY_DICT, "SETITEMS");
+				return py_iter_append_mark (pvm, obj, PY_DICT);
 			} else {
 				return py_what_addop_stack (pvm, OP_SETITEMS);
 			}
@@ -628,7 +637,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return py_what_addop (pvm, 1, code);
 	// tuple's
 	case OP_TUPLE:
-		return op_tuple (pvm);
+		return op_type_create_append (pvm, PY_TUPLE);
 	case OP_EMPTY_TUPLE:
 		return op_iter_n (pvm, 0, PY_TUPLE);
 	case OP_TUPLE1:
@@ -644,6 +653,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_append (pvm);
 	case OP_APPENDS:
 		return op_appends (pvm);
+	case OP_LIST:
+		return op_type_create_append (pvm, PY_LIST);
 	// dicts
 	case OP_EMPTY_DICT:
 		return op_iter_n (pvm, 0, PY_DICT);
@@ -668,6 +679,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_DUP:
 		return op_dup (pvm);
 
+	// unhandled
 	case OP_INT:
 	case OP_LONG:
 	case OP_PERSID:
@@ -676,7 +688,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_UNICODE:
 	case OP_DICT:
 	case OP_GET:
-	case OP_LIST:
 	case OP_OBJ:
 	case OP_PUT:
 	// registry
