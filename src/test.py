@@ -247,7 +247,7 @@ tests = [
        """,
        "ret" : '{"stack":[{"offset":6,"type":"PY_LIST","value":[{"offset":3,"type":"PY_INT","value":42},{"offset":5,"type":"PY_BOOL","value":true}]}],"popstack":[]}\n'
     }, {
-       "name" : "Test list",
+       "name" : "Test dict",
        "asm" : """
             proto 4
             mark
@@ -259,6 +259,17 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":37,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"\\"first_key\\""},{"offset":17,"type":"PY_STR","value":"\\"value\\""}],[{"offset":27,"type":"PY_STR","value":"\\"key2\\""},{"offset":36,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
+    }, {
+       "name" : "inst",
+       "asm" : """
+            proto 4
+            mark
+            short_binstring "ff"
+            binint1 16
+            inst "builtins int"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":9,"type":"PY_WHAT","value":[{"offset":9,"Op":"Initial Object","args":[{"offset":9,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":9,"Op":"inst","args":[{"offset":9,"type":"PY_LIST","value":[{"offset":3,"type":"PY_STR","value":"\\"ff\\""},{"offset":7,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
     }
 ]
 

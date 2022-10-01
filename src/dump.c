@@ -320,6 +320,7 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 }
 
 static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, const char *vn) {
+	// TODO: comment in output a distinction between INST and REDUCE, they are slightly different
 	PyObj *args = r_list_last (pop->stack);
 	return args
 		&& PCOLORSTR (vn, func_var)
@@ -399,6 +400,7 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	switch (pop->op) {
 	case OP_FAKE_INIT:
 		return dump_oper_init (nfo, pop, vn);
+	case OP_INST:
 	case OP_REDUCE:
 		return dump_oper_reduce (nfo, pop, vn);
 	case OP_NEWOBJ:
@@ -413,7 +415,7 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	case OP_SETITEMS:
 		return dump_oper_setitems (nfo, pop, vn);
 	default:
-		R_LOG_ERROR ("Python dumper Can't handle %s (%02x) operator yet", py_op_to_name (pop->op), pop->op & 0xff);
+		R_LOG_ERROR ("Python dumper Can't handle `%s` (%02x) operator yet", py_op_to_name (pop->op), pop->op & 0xff);
 	}
 	return false;
 }
@@ -478,7 +480,7 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	case PY_WHAT:
 		return dump_what (nfo, obj);
 	default:
-		R_LOG_ERROR ("Python dumper can't handle type %s yet", py_type_to_name(obj->type))
+		R_LOG_ERROR ("Python dumper can't handle type `%s` yet", py_type_to_name(obj->type))
 	}
 	return false;
 }
@@ -574,6 +576,8 @@ const char *py_type_to_name(PyType t) {
 
 const char *py_op_to_name(PyOp t) {
 	switch (t) {
+	case OP_INST:
+		return "inst";
 	case OP_REDUCE:
 		return "reduce";
 	case OP_BUILD:

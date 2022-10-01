@@ -320,10 +320,18 @@ static inline bool op_newbool(PMState *pvm, bool py_bool) {
 	return false;
 }
 
+static inline PyObj *iter_to_mark(PMState *pvm, PyType t) {
+	PyObj *obj = py_iter_new (pvm, t);
+	if (obj && py_iter_append_mark (pvm, obj, t)) {
+		return obj;
+	}
+	py_obj_free (obj);
+	return NULL;
+}
 
 static inline bool op_type_create_append(PMState *pvm, PyType t) {
-	PyObj *obj = py_iter_new (pvm, t);
-	if (py_iter_append_mark (pvm, obj, t) && r_list_append (pvm->stack, obj)) {
+	PyObj *obj = iter_to_mark (pvm, t);
+	if (obj && r_list_append (pvm->stack, obj)) {
 		return true;
 	}
 	py_obj_free (obj);
@@ -414,15 +422,6 @@ static inline bool op_appends(PMState *pvm) {
 			R_LOG_ERROR ("No element to append to at 0x%" PFMT64x, pvm->offset);
 		}
 	}
-	return false;
-}
-
-static inline bool op_list(PMState *pvm) {
-	PyObj *obj = py_iter_new (pvm, PY_LIST);
-	if (py_iter_append_mark (pvm, obj, PY_LIST) && r_list_append (pvm->stack, obj)) {
-		return true;
-	}
-	py_obj_free (obj);
 	return false;
 }
 
@@ -573,14 +572,38 @@ static inline bool split_module_str(RAnalOp *op, PyFunc *cl) {
 	return cl->name && cl->module? true: false;
 }
 
-static inline bool op_global(PMState *pvm, RAnalOp *op) {
+static inline PyObj *glob_obj(PMState *pvm, RAnalOp *op) {
 	PyObj *obj = py_obj_new (pvm, PY_FUNC);
 	if (obj && split_module_str (op, &obj->py_func)) {
-		if (r_list_push (pvm->stack, obj)) {
-			return true;
-		}
+		return obj;
 	}
 	py_obj_free (obj);
+	return NULL;
+}
+
+static inline bool op_global(PMState *pvm, RAnalOp *op) {
+	PyObj *obj = glob_obj (pvm, op);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		return true;
+	}
+	return false;
+}
+
+static inline bool op_inst(PMState *pvm, RAnalOp *op) {
+	// like GLOBAL + LIST + REDUCE but stack is not set up wonky
+	RList *prv_stack = r_list_last (pvm->metastack);
+	if (prv_stack) {
+		 // get the func on top of previous stack
+		PyObj *obj = glob_obj (pvm, op);
+		if (r_list_push (prv_stack, obj)) {
+			if (op_type_create_append(pvm, PY_LIST)) {
+				return py_what_addop (pvm, 1, OP_INST);
+			} else {
+				r_list_pop (prv_stack);
+			}
+		}
+		py_obj_free (obj);
+	}
 	return false;
 }
 
@@ -633,6 +656,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return push_str (pvm, op);
 	// class stuff
 	case OP_INST:
+		return op_inst (pvm, op);
 	case OP_GLOBAL:
 		return op_global (pvm, op);
 	case OP_REDUCE:
