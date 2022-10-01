@@ -589,22 +589,38 @@ static inline bool op_global(PMState *pvm, RAnalOp *op) {
 	return false;
 }
 
-static inline bool op_inst(PMState *pvm, RAnalOp *op) {
-	// like GLOBAL + LIST + REDUCE but stack is not set up wonky
-	RList *prv_stack = r_list_last (pvm->metastack);
-	if (prv_stack) {
-		 // get the func on top of previous stack
-		PyObj *obj = glob_obj (pvm, op);
-		if (r_list_push (prv_stack, obj)) {
-			if (op_type_create_append(pvm, PY_LIST)) {
-				return py_what_addop (pvm, 1, OP_INST);
+static inline bool insantiate(PMState *pvm, RAnalOp *op, PyObj *cls, PyObj *args) {
+	PyOp o = OP_INST;
+	if (!strcmp (op->mnemonic, "obj")) {
+		o = OP_OBJ;
+	}
+	if (args && cls) {
+		if (r_list_push (pvm->stack, cls)) {
+			if (r_list_push (pvm->stack, args)) {
+				// now everything is setup like global
+				return py_what_addop (pvm, 1, o);
 			} else {
-				r_list_pop (prv_stack);
+				r_list_pop (pvm->stack);
 			}
 		}
-		py_obj_free (obj);
 	}
+	py_obj_free (args);
+	py_obj_free (cls);
 	return false;
+}
+
+static inline bool op_inst(PMState *pvm, RAnalOp *op) {
+	// like GLOBAL + LIST + REDUCE but stack is not set up wonky
+	PyObj *cls = glob_obj (pvm, op);
+	PyObj *args = iter_to_mark (pvm, PY_LIST);
+	return insantiate (pvm, op, cls, args);
+}
+
+static inline bool op_obj(PMState *pvm, RAnalOp *op) {
+	// like LIST + REDUCE but stack is not set up wonky
+	PyObj *cls = r_list_pop_head (pvm->stack);
+	PyObj *args = iter_to_mark (pvm, PY_LIST);
+	return insantiate (pvm, op, cls, args);
 }
 
 static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
@@ -655,6 +671,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_SHORT_BINUNICODE:
 		return push_str (pvm, op);
 	// class stuff
+	case OP_OBJ:
+		return op_obj (pvm, op);
 	case OP_INST:
 		return op_inst (pvm, op);
 	case OP_GLOBAL:
@@ -717,7 +735,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_STRING:
 	case OP_UNICODE:
 	case OP_GET:
-	case OP_OBJ:
 	case OP_PUT:
 	// registry
 	case OP_EXT1:

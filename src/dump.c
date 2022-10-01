@@ -400,6 +400,7 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	switch (pop->op) {
 	case OP_FAKE_INIT:
 		return dump_oper_init (nfo, pop, vn);
+	case OP_OBJ:
 	case OP_INST:
 	case OP_REDUCE:
 		return dump_oper_reduce (nfo, pop, vn);
@@ -576,6 +577,8 @@ const char *py_type_to_name(PyType t) {
 
 const char *py_op_to_name(PyOp t) {
 	switch (t) {
+	case OP_OBJ:
+		return "obj";
 	case OP_INST:
 		return "inst";
 	case OP_REDUCE:

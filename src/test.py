@@ -270,6 +270,18 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":9,"type":"PY_WHAT","value":[{"offset":9,"Op":"Initial Object","args":[{"offset":9,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":9,"Op":"inst","args":[{"offset":9,"type":"PY_LIST","value":[{"offset":3,"type":"PY_STR","value":"\\"ff\\""},{"offset":7,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
+    }, {
+       "name" : "obj",
+       "asm" : """
+            proto 4
+            mark
+            global "builtins int"
+            short_binstring "ff"
+            binint1 16
+            obj
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":23,"type":"PY_WHAT","value":[{"offset":23,"Op":"Initial Object","args":[{"offset":3,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":23,"Op":"obj","args":[{"offset":23,"type":"PY_LIST","value":[{"offset":17,"type":"PY_STR","value":"\\"ff\\""},{"offset":21,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
     }
 ]
 
