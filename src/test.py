@@ -206,7 +206,6 @@ tests = [
     }, {
        "name" : "memorize",
        "asm" : """
-
             proto 0x2
             binint1 1
             memoize
@@ -217,9 +216,9 @@ tests = [
             pop
             pop
             pop
+            binget 0
             binget 1
             binget 2
-            binget 3
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":1},{"offset":5,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}],"popstack":[{"offset":8,"type":"PY_INT","value":3},{"offset":5,"type":"PY_INT","value":2},{"offset":2,"type":"PY_INT","value":1}]}\n'
@@ -229,12 +228,14 @@ tests = [
             proto 0x4
             binint1 1
             binput 32
-            binint1 2
+            pop
+            binint1 42
             memoize
-            binput 2
+            pop
+            binget 1
             stop
        """,
-       "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":7,"type":"PY_INT","value":42}],"popstack":[{"offset":2,"type":"PY_INT","value":1},{"offset":7,"type":"PY_INT","value":42}]}\n'
     }, {
        "name" : "Test list",
        "asm" : """

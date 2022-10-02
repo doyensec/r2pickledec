@@ -253,7 +253,7 @@ static inline bool memo_put(PMState *pvm, st64 loc) {
 }
 
 static inline bool op_memorize(PMState *pvm) {
-	return memo_put (pvm, pvm->memo->size + 1);
+	return memo_put (pvm, pvm->memo->size);
 }
 
 static inline size_t memo_len(RRBTree *tree) {

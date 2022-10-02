@@ -109,7 +109,7 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 	if (nfo->ret) {
 		printer_append (nfo, "return ");
 		if (obj->varname) {
-			if (!PCOLORSTR (obj->varname, func_var)) {
+			if (!PCOLORSTR (obj->varname, func_var) || !printer_append (nfo, "\n")) {
 				return -1;
 			}
 			return 1;
