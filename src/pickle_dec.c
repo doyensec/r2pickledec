@@ -582,8 +582,7 @@ static inline bool split_module_str(RAnalOp *op, PyFunc *cl) {
 		if (len == 2) {
 			cl->module = strdup (str);
 			char *name = (char *)r_str_word_get0 (str, 1);
-			len = strlen (name);
-			if (len > 2) {
+			if (R_STR_ISNOTEMPTY (name)) {
 				cl->name = strdup (name);
 			}
 		}
@@ -814,13 +813,14 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		r_anal_op_init(&op);
 		int size = r_anal_op (c->anal, &op, pvm->offset, rbuf, bsize, R_ANAL_OP_MASK_BASIC);
 		if (size <= 0) {
+			R_LOG_ERROR ("Failed to disassemble op at offset: 0x"PFMT64x, pvm->offset);
 			return false;
 		}
 		R_LOG_DEBUG ("[0x%"PFMT64x"] OP(%02x): %s", pvm->offset, ((char)rbuf[0]) & 0xff, op.mnemonic);
 		bool exec = exec_op (c, pvm, &op, (char)rbuf[0]);
 		r_anal_op_fini (&op);
 		if (!exec) {
-			R_LOG_ERROR ("Failed to parse all opcodes\n");
+			R_LOG_ERROR ("Failed to exec opcode at offset: 0x" PFMT64x " (op: '%s')", pvm->offset, op.mnemonic);
 			return false;
 		}
 
