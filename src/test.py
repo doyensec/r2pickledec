@@ -57,7 +57,7 @@ tests = [
             setitems
             stop
        """,
-       "ret" : '{"stack":[{"offset":2,"type":"PY_DICT","value":[[{"offset":4,"type":"PY_STR","value":"\\"test_key\\""},{"offset":17,"type":"PY_BOOL","value":true}],[{"offset":18,"type":"PY_STR","value":"\\"testkey2\\""},{"offset":31,"type":"PY_BOOL","value":false}]]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":2,"type":"PY_DICT","value":[[{"offset":4,"type":"PY_STR","value":"test_key"},{"offset":17,"type":"PY_BOOL","value":true}],[{"offset":18,"type":"PY_STR","value":"testkey2"},{"offset":31,"type":"PY_BOOL","value":false}]]}],"popstack":[]}\n'
     }, {
        "name" : "None",
        # pickle.dump({"test_key" : True, "testkey2": False}, fp, protocol=2)
@@ -125,7 +125,7 @@ tests = [
             reduce
             stop
        """,
-       "ret" : '{"stack":[{"offset":22,"type":"PY_WHAT","value":[{"offset":22,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"os","name":"system"}}]},{"offset":22,"Op":"reduce","args":[{"offset":21,"type":"PY_TUPLE","value":[{"offset":13,"type":"PY_STR","value":"\\"whoami\\""}]}]}]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":22,"type":"PY_WHAT","value":[{"offset":22,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"os","name":"system"}}]},{"offset":22,"Op":"reduce","args":[{"offset":21,"type":"PY_TUPLE","value":[{"offset":13,"type":"PY_STR","value":"whoami"}]}]}]}],"popstack":[]}\n'
     }, {
        "name" : "newobj",
        "asm" : """
@@ -158,7 +158,7 @@ tests = [
             setitem
             stop
        """,
-       "ret" : '{"stack":[{"offset":2,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"\\"test_key\\""},{"offset":16,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":2,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"test_key"},{"offset":16,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
     }, {
        "name" : "setitem on non-dict",
        "asm" : """
@@ -171,7 +171,7 @@ tests = [
             setitem
             stop
        """,
-       "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":45,"Op":"setitem","args":[{"offset":31,"type":"PY_STR","value":"\\"test_key\\""},{"offset":44,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":45,"Op":"setitem","args":[{"offset":31,"type":"PY_STR","value":"test_key"},{"offset":44,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
     }, {
        "name" : "appendsSSSS",
        "asm" : """
@@ -202,7 +202,7 @@ tests = [
             setitems
             stop
        """,
-       "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"\\"test_key\\""},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"\\"test_key2\\""},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"\\"test_key3\\""},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"test_key"},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"test_key2"},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"test_key3"},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
     }, {
        "name" : "memorize",
        "asm" : """
@@ -259,7 +259,7 @@ tests = [
             dict
             stop
        """,
-       "ret" : '{"stack":[{"offset":37,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"\\"first_key\\""},{"offset":17,"type":"PY_STR","value":"\\"value\\""}],[{"offset":27,"type":"PY_STR","value":"\\"key2\\""},{"offset":36,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":37,"type":"PY_DICT","value":[[{"offset":3,"type":"PY_STR","value":"first_key"},{"offset":17,"type":"PY_STR","value":"value"}],[{"offset":27,"type":"PY_STR","value":"key2"},{"offset":36,"type":"PY_BOOL","value":true}]]}],"popstack":[]}\n'
     }, {
        "name" : "inst",
        "asm" : """
@@ -270,7 +270,7 @@ tests = [
             inst "builtins int"
             stop
        """,
-       "ret" : '{"stack":[{"offset":9,"type":"PY_WHAT","value":[{"offset":9,"Op":"Initial Object","args":[{"offset":9,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":9,"Op":"inst","args":[{"offset":9,"type":"PY_LIST","value":[{"offset":3,"type":"PY_STR","value":"\\"ff\\""},{"offset":7,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":9,"type":"PY_WHAT","value":[{"offset":9,"Op":"Initial Object","args":[{"offset":9,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":9,"Op":"inst","args":[{"offset":9,"type":"PY_LIST","value":[{"offset":3,"type":"PY_STR","value":"ff"},{"offset":7,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
     }, {
        "name" : "obj",
        "asm" : """
@@ -282,7 +282,7 @@ tests = [
             obj
             stop
        """,
-       "ret" : '{"stack":[{"offset":23,"type":"PY_WHAT","value":[{"offset":23,"Op":"Initial Object","args":[{"offset":3,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":23,"Op":"obj","args":[{"offset":23,"type":"PY_LIST","value":[{"offset":17,"type":"PY_STR","value":"\\"ff\\""},{"offset":21,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
+       "ret" : '{"stack":[{"offset":23,"type":"PY_WHAT","value":[{"offset":23,"Op":"Initial Object","args":[{"offset":3,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":23,"Op":"obj","args":[{"offset":23,"type":"PY_LIST","value":[{"offset":17,"type":"PY_STR","value":"ff"},{"offset":21,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
     }
 ]
 

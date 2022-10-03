@@ -1,6 +1,8 @@
 #include "dump.h"
 
 #define PALCOLOR(x) nfo->pal && nfo->pal->x? nfo->pal->x: ""
+#define PCOLOR_SET(x) printer_append (nfo, PALCOLOR (x))
+#define PCOLOR_RESET() printer_append (nfo, PALCOLOR (reset))
 #define PCOLORSTR(str, x) printer_appendf (nfo, "%s%s%s", PALCOLOR (x), str, PALCOLOR (reset))
 
 static inline void printer_drain(PrintInfo *nfo) {
@@ -166,7 +168,9 @@ static inline bool dump_int(PrintInfo *nfo, PyObj *obj) {
 
 static inline bool dump_str(PrintInfo *nfo, PyObj *obj) {
 	PREPRINT ();
-	return PCOLORSTR (obj->py_str, ai_ascii)
+	return PCOLOR_SET (ai_ascii)
+		&& printer_appendf (nfo, "\"%s\"", obj->py_str)
+		&& PCOLOR_RESET ()
 		&& newline (nfo, obj);
 }
 

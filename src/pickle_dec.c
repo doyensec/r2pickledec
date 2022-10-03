@@ -471,7 +471,15 @@ static inline char *op_str_arg(RAnalOp *op) {
 	if (op && op->mnemonic) {
 		const char *ptr = strstr (op->mnemonic, " \"");
 		if (ptr) {
-			return strdup (ptr + 1);
+			char *str = strdup (ptr + 2); // skip space and quote
+			if (str) {
+				size_t len = strlen (str);
+				if (len > 0) {
+					str[len - 1] = '\0'; // remove last quote
+					return str;
+				}
+				free (str);
+			}
 		}
 	}
 	return NULL;
@@ -512,8 +520,21 @@ static inline bool op_float(PMState *pvm, RAnalOp *op, bool quoted) {
 	return false;
 }
 
-static inline bool push_str(PMState *pvm, RAnalOp *op) {
-	char *str = op_str_arg (op);
+static inline char *get_big_str(RCore *c, RAnalOp *op) {
+	if (op->ptr && op->ptrsize > 80 && op->ptrsize < ST32_MAX) {
+		char *str = NULL;
+		ut8 *buf = malloc (op->ptrsize);
+		if (buf && r_io_read_at (c->io, op->ptr, buf, op->ptrsize)) {
+			str = r_str_escape_raw (buf, op->ptrsize);
+		}
+		free (buf);
+		return str;
+	}
+	return op_str_arg (op);
+}
+
+static inline bool push_str(RCore *c, PMState *pvm, RAnalOp *op) {
+	char *str = get_big_str (c, op);
 	PyObj *obj = py_obj_new (pvm, PY_STR);
 	if (obj && str) {
 		obj->py_str = str;
@@ -557,13 +578,12 @@ static inline bool op_pop_mark(PMState *pvm) {
 static inline bool split_module_str(RAnalOp *op, PyFunc *cl) {
 	char *str = op_str_arg (op);
 	if (str) {
-		int len = r_str_split(str, ' ');
+		int len = r_str_split (str, ' ');
 		if (len == 2) {
-			cl->module = strdup (str + 1);
+			cl->module = strdup (str);
 			char *name = (char *)r_str_word_get0 (str, 1);
 			len = strlen (name);
 			if (len > 2) {
-				name[len - 1] = '\0'; // remove quote
 				cl->name = strdup (name);
 			}
 		}
@@ -669,7 +689,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_SHORT_BINBYTES:
 	case OP_SHORT_BINSTRING:
 	case OP_SHORT_BINUNICODE:
-		return push_str (pvm, op);
+		return push_str (c, pvm, op);
 	// class stuff
 	case OP_OBJ:
 		return op_obj (pvm, op);
