@@ -6,8 +6,7 @@
 #define PCOLORSTR(str, x) printer_appendf (nfo, "%s%s%s", PALCOLOR (x), str, PALCOLOR (reset))
 
 static inline void printer_drain(PrintInfo *nfo) {
-	r_return_if_fail (nfo->out);
-	if (r_strbuf_length (nfo->out)) {
+	if (nfo->out && r_strbuf_length (nfo->out)) {
 		char *buf = r_strbuf_drain_nofree (nfo->out);
 		if (buf) {
 			r_cons_printf ("%s", buf);
@@ -463,6 +462,10 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 }
 
 bool dump_obj(PrintInfo *nfo, PyObj *obj) {
+	if (!nfo->first && obj->selfref) {
+		return prepend_obj (nfo, obj);
+	}
+
 	switch (obj->type) {
 	case PY_BOOL:
 		return dump_bool (nfo, obj);

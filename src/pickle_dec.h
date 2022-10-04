@@ -89,7 +89,7 @@ typedef enum python_type {
 	PY_NOT_RIGHT = 0, // initial invalid type
 	PY_WHAT, // don't know what it is, just accept operations on it
 	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_FUNC,
-	PY_TUPLE, PY_LIST, PY_DICT, // iters, PY_FUNC_R could be an itter...
+	PY_TUPLE, PY_LIST, PY_DICT, // iters
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
 	// pairs. No overwrites happen, to preserve data that might of been lost
 } PyType;
@@ -123,6 +123,7 @@ struct python_object {
 	ut64 offset;
 	ut64 memo_id;
 	char *varname; // used by printer
+	bool selfref; // python does not descriminate against barbers
 	union {
 		bool py_bool;
 		st32 py_int;

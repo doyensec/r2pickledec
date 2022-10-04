@@ -204,7 +204,7 @@ tests = [
        """,
        "ret" : '{"stack":[{"offset":30,"type":"PY_WHAT","value":[{"offset":30,"Op":"Initial Object","args":[{"offset":2,"type":"PY_FUNC","value":{"module":"requests.sessions","name":"session"}}]},{"offset":30,"Op":"newobj","args":[{"offset":29,"type":"PY_TUPLE","value":[]}]},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"test_key"},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"test_key2"},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"test_key3"},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}\n'
     }, {
-       "name" : "memorize",
+       "name" : "memoize",
        "asm" : """
             proto 0x2
             binint1 1
@@ -283,6 +283,67 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":23,"type":"PY_WHAT","value":[{"offset":23,"Op":"Initial Object","args":[{"offset":3,"type":"PY_FUNC","value":{"module":"builtins","name":"int"}}]},{"offset":23,"Op":"obj","args":[{"offset":23,"type":"PY_LIST","value":[{"offset":17,"type":"PY_STR","value":"ff"},{"offset":21,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}\n'
+    }, {
+       "name" : "list self ref `a = [];a.append(a)`",
+       "asm" : """
+            proto 0x4
+            empty_list
+            dup
+            append
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_LIST","value":[{"offset":2,"type":"PY_LIST","prev_seen":".stack[0]"}]}],"popstack":[]}\n'
+    }, {
+       "name" : "dict self ref",
+       "asm" : """
+            proto 0x4
+            empty_dict
+            memoize
+            short_binstring "key"
+            binget 0
+            setitem
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_DICT","value":[[{"offset":4,"type":"PY_STR","value":"key"},{"offset":2,"type":"PY_DICT","prev_seen":".stack[0]"}]]}],"popstack":[]}\n'
+    }, {
+       "name" : "path check",
+       "asm" : """
+            proto 0x4
+            frame 0x2d
+            empty_list
+            memoize
+            mark
+            binint1 0x0
+            empty_dict
+            memoize
+            short_binunicode "a"
+            memoize
+            empty_list
+            memoize
+            mark
+            binint1 0x0
+            binint1 0x1
+            empty_list
+            memoize
+            empty_dict
+            memoize
+            mark
+            short_binunicode "b"
+            memoize
+            short_binunicode "c"
+            memoize
+            short_binunicode "d"
+            memoize
+            binget 0x4
+            setitems
+            append
+            appends
+            setitem
+            binint1 0x1
+            appends
+            stop
+       """,
+       "ret" : ''
     }
 ]
 

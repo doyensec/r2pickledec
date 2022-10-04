@@ -3,5 +3,5 @@
 #include "dump.h"
 #include "pickle_dec.h"
 
-bool json_dump_state(PJ *pj, PMState *pvm, bool meta);
+bool json_dump_state(PJ *pj, PMState *pvm);
 #endif

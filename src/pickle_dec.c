@@ -2,6 +2,7 @@
 #include <r_core.h>
 #include <r_util.h>
 #include "json_dump.h"
+#include "self_ref.h"
 
 #define TAB "\t"
 
@@ -829,12 +830,14 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		bsize -= size;
 		rbuf += size;
 	}
+	empty_memo (pvm);
+	self_ref_mark (pvm);
 	return true;
 }
 
-static inline bool dump_json(RCore *c, PMState *pvm, bool meta) {
+static inline bool dump_json(RCore *c, PMState *pvm) {
 	PJ *pj = r_core_pj_new (c);
-	if (pj && json_dump_state (pj, pvm, meta)) {
+	if (pj && json_dump_state (pj, pvm)) {
 		r_cons_printf ("%s\n", pj_string (pj));
 		pj_free (pj);
 		return true;
@@ -852,9 +855,8 @@ static int pickle_dec(void *user, const char *input) {
 	if (init_machine_state (c, &state)) {
 		state.break_on_stop = true;
 		bool pvm_fin = run_pvm (c, &state);
-		empty_memo (&state);
 		if (strchr (input, 'j')) {
-			dump_json(c, &state, strchr (input, 'm')? true: false);
+			dump_json(c, &state);
 		} else {
 			PrintInfo nfo;
 			if (!print_info_init (&nfo, c) || !dump_machine(&state, &nfo, !pvm_fin)) {

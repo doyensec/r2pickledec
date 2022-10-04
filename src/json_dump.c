@@ -2,14 +2,53 @@
 #include <r_util.h>
 #include "json_dump.h"
 
-static bool py_obj(PJ *pj, PyObj *obj, bool meta);
+static bool py_obj(PJ *pj, PyObj *obj, RList *path);
 
-static inline bool pj_list(PJ *pj, RList *l, bool meta) {
+static bool inline path_push(RList *path, char *str) {
+	if (str && r_list_push (path, str)) {
+		return true;
+	}
+	free (str);
+	return false;
+}
+
+static bool inline path_pop(RList *path) {
+	char *str = r_list_pop (path);
+	if (str) {
+		free (str);
+		return true;
+	}
+	return false;
+}
+
+static inline bool obj_add_path(PyObj *obj, RList *path) {
+	RStrBuf *sb = r_strbuf_new ("");
+	if (sb) {
+		char *s;
+		RListIter *iter;
+		r_list_foreach (path, iter, s) {
+			if (!r_strbuf_append (sb, s)) {
+				r_strbuf_free (sb);
+				return false;
+			}
+		}
+		obj->varname = r_strbuf_drain (sb);
+		return obj->varname? true: false;
+	}
+	return false;
+}
+
+static inline bool pj_list(PJ *pj, RList *l, RList *path) {
+	ut32 i = 0;
 	PyObj *obj;
 	RListIter *iter;
 	if (pj_a (pj)) {
 		r_list_foreach (l, iter, obj) {
-			if (!py_obj (pj, obj, meta)) {
+			if (
+				!path_push (path, r_str_newf ("[%u]", i++))
+				|| !py_obj (pj, obj, path)
+				|| !path_pop (path)
+			) {
 				return false;
 			}
 		}
@@ -18,52 +57,23 @@ static inline bool pj_list(PJ *pj, RList *l, bool meta) {
 	return false;
 }
 
-static inline bool pj_klist(PJ *pj, char *name, RList *l, bool meta) {
-	return pj_k (pj, name) && pj_list (pj, l, meta);
+static inline bool pj_klist(PJ *pj, char *name, RList *l, RList *path) {
+	if (
+		pj_k (pj, name)
+		&& path_push (path, r_str_newf (".%s", name))
+		&& pj_list (pj, l, path)
+		&& path_pop (path)
+	) {
+		return true;
+	}
+	return false;
 }
 
-static inline bool py_func(PJ *pj, PyObj *obj, bool meta) {
+static inline bool py_func(PJ *pj, PyObj *obj, RList *path) {
 	if (
 		pj_o (pj)
 		&& pj_ks (pj, "module", obj->py_func.module)
 		&& pj_ks (pj, "name", obj->py_func.name)
-		&& pj_end (pj)
-	  ) {
-		  return true;
-	  }
-	  return false;
-}
-
-static inline bool pj_py_dict_meta(PJ *pj, RList *l) {
-	PyObj *obj;
-	RListIter *iter;
-
-	if (pj_a (pj)) {
-		bool is_key = true;
-		r_list_foreach (l, iter, obj) {
-			if (is_key && !pj_a (pj)) {
-				return false;
-			}
-			if (!py_obj (pj, obj, true)) {
-				return false;
-			}
-			if (!is_key) {
-				pj_end (pj);
-			}
-			is_key = !is_key;
-		}
-		return pj_end (pj)? true: false;
-	}
-	return false;
-}
-
-
-static inline bool pj_pyop(PJ *pj, PyOper *pop, bool meta) {
-	if (
-		pj_o (pj)
-		&& pj_kn (pj, "offset", pop->offset)
-		&& pj_ks (pj, "Op", py_op_to_name (pop->op))
-		&& pj_klist (pj, "args", pop->stack, meta)
 		&& pj_end (pj)
 	) {
 		return true;
@@ -71,11 +81,52 @@ static inline bool pj_pyop(PJ *pj, PyOper *pop, bool meta) {
 	return false;
 }
 
-static inline bool pj_obj_what(PJ *pj, PyObj *obj, bool meta) {
-	if (!meta) {
-		R_LOG_ERROR ("Non-meta JSON for PY_WHAT is not supported yet :(");
-		return false;
+static inline bool pj_py_dict(PJ *pj, RList *l, RList *path) {
+	PyObj *obj;
+	RListIter *iter;
+
+	if (pj_a (pj)) {
+		ut32 i = 0;
+		r_list_foreach (l, iter, obj) {
+			if (i % 2 == 0) {
+			  if (!path_push (path, r_str_newf ("[%d]", i / 2)) || !pj_a (pj)) {
+					return false;
+				}
+			}
+			if (
+				!path_push (path, r_str_newf ("[%d]", i % 2 == 0? 0: 1))
+				|| !py_obj (pj, obj, path)
+				|| !path_pop (path)
+			) {
+				return false;
+			}
+			if (i % 2) {
+				if (!pj_end (pj) || !path_pop (path)) {
+					pj_end (pj);
+				}
+			}
+			i++;
+		}
+		return pj_end (pj)? true: false;
 	}
+	return false;
+}
+
+
+static inline bool pj_pyop(PJ *pj, PyOper *pop, RList *path) {
+	if (
+		pj_o (pj)
+		&& pj_kn (pj, "offset", pop->offset)
+		&& pj_ks (pj, "Op", py_op_to_name (pop->op))
+		&& pj_klist (pj, "args", pop->stack, path)
+		&& pj_end (pj)
+	) {
+		return true;
+	}
+	return false;
+}
+
+static inline bool pj_obj_what(PJ *pj, PyObj *obj, RList *path) {
 	if (!pj_a (pj)) {
 		return false;
 	}
@@ -83,23 +134,35 @@ static inline bool pj_obj_what(PJ *pj, PyObj *obj, bool meta) {
 	PyOper *pop;
 	RListIter *iter;
 	r_list_foreach (obj->py_what, iter, pop) {
-		if (!pj_pyop (pj, pop, meta)) {
+		if (!pj_pyop (pj, pop, path)) {
 			return false;
 		}
 	}
 	return pj_end (pj)? true: false;
 }
 
-static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
-	if (meta) {
-		if (
-			!pj_o (pj)
-			|| !pj_kn (pj, "offset", obj->offset)
-			|| !pj_ks (pj, "type", py_type_to_name (obj->type))
-			|| !pj_k (pj, "value")
-		) {
+static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
+	if (
+		!pj_o (pj)
+		|| !pj_kn (pj, "offset", obj->offset)
+		|| !pj_ks (pj, "type", py_type_to_name (obj->type))
+	) {
+		return false;
+	}
+	if (obj->selfref) {
+		if (obj->varname) {
+			return pj_ks (pj, "prev_seen", obj->varname) && pj_end (pj);
+		}
+		if (!obj_add_path (obj, path)) {
 			return false;
 		}
+	}
+
+	if (
+		!pj_k (pj, "value")
+		|| !path_push (path, strdup(".value"))
+	) {
+		return false;
 	}
 	// just the value
 	bool ret = true;
@@ -117,74 +180,42 @@ static bool py_obj(PJ *pj, PyObj *obj, bool meta) {
 		ret &= pj_b (pj, obj->py_bool)? true: false;
 		break;
 	case PY_FUNC:
-		ret &= py_func (pj, obj, meta);
+		ret &= py_func (pj, obj, path);
 		break;
 	case PY_STR:
 		ret &= pj_s (pj, obj->py_str)? true: false;
 		break;
 	case PY_LIST:
-		ret &= pj_list (pj, obj->py_iter, meta);
+		ret &= pj_list (pj, obj->py_iter, path);
 		break;
 	case PY_TUPLE:
-		ret &= pj_list (pj, obj->py_iter, meta);
+		ret &= pj_list (pj, obj->py_iter, path);
 		break;
 	case PY_DICT:
-		ret &= pj_py_dict_meta (pj, obj->py_iter);
+		ret &= pj_py_dict (pj, obj->py_iter, path);
 		break;
 	case PY_WHAT:
-		ret &= pj_obj_what (pj, obj, meta);
+		ret &= pj_obj_what (pj, obj, path);
 		break;
 	default:
 		r_warn_if_reached ();
-		return false;
+		ret = false;
 	}
-	if (meta) {
-		ret &= pj_end (pj)? true: false;
-	}
-	return ret;
+	path_pop (path);
+	return ret && pj_end (pj)? true: false;
 }
 
-static inline bool memo_looper(PJ *pj, PyObj *obj) {
+bool json_dump_state(PJ *pj, PMState *pvm) {
+	r_return_val_if_fail (pj && pvm, false);
+	RList *path = r_list_newf (free);
 	if (
-		pj_o (pj)
-		&& pj_kn (pj, "index", obj->memo_id)
-		&& pj_k (pj, "value")
-		&& py_obj (pj, obj, true)
+		path
+		&& pj_o (pj) // open initial object
+		&& pj_klist (pj, "stack", pvm->stack, path)
+		&& pj_klist (pj, "popstack", pvm->popstack, path)
 		&& pj_end (pj)
 	) {
 		return true;
-	}
-	return false;
-}
-
-static inline bool pj_memo(PJ *pj, PMState *pvm) {
-	if (pj_ka (pj, "memo")) {
-		RRBNode *node;
-		PyObj *obj;
-		r_crbtree_foreach (pvm->memo, node, PyObj, obj) {
-			if (!memo_looper (pj, obj)) {
-				return false;
-			}
-		}
-		return pj_end (pj)? true: false;
-	}
-	return false;
-}
-
-bool json_dump_state(PJ *pj, PMState *pvm, bool meta) {
-	r_return_val_if_fail (pj && pvm, false);
-	if (
-		pj_o (pj) // open initial object
-		&& pj_klist (pj, "stack", pvm->stack, meta)
-	) {
-		if (meta) {
-			if (!pj_klist (pj, "popstack", pvm->popstack, meta)) {
-					return false;
-			}
-		}
-		if (pj_end (pj)) {
-			return true;
-		}
 	}
 	return false;
 }
