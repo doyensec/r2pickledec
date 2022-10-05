@@ -820,7 +820,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		bool exec = exec_op (c, pvm, &op, (char)rbuf[0]);
 		r_anal_op_fini (&op);
 		if (!exec) {
-			R_LOG_ERROR ("Failed to exec opcode at offset: 0x" PFMT64x " (op: '%s')", pvm->offset, op.mnemonic);
+			R_LOG_ERROR ("Failed to exec opcode at offset: 0x%" PFMT64x " (op: '%s')", pvm->offset, op.mnemonic);
 			return false;
 		}
 
