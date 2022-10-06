@@ -344,6 +344,52 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":11,"type":"PY_LIST","value":[{"offset":14,"type":"PY_INT","value":0},{"offset":16,"type":"PY_DICT","value":[[{"offset":18,"type":"PY_STR","value":"a"},{"offset":22,"type":"PY_LIST","value":[{"offset":25,"type":"PY_INT","value":0},{"offset":27,"type":"PY_INT","value":1},{"offset":29,"type":"PY_LIST","value":[{"offset":31,"type":"PY_DICT","value":[[{"offset":34,"type":"PY_STR","value":"b"},{"offset":38,"type":"PY_STR","value":"c"}],[{"offset":42,"type":"PY_STR","value":"d"},{"offset":29,"type":"PY_LIST","prev_seen":".stack[0].value[1].value[0][1].value[2]"}]]}]}]}]]},{"offset":52,"type":"PY_INT","value":1}]}],"popstack":[]}\n'
+    }, {
+       "name" : "empty set",
+       "asm" : """
+            proto 0x4
+            empty_set
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_SET","value":[]}],"popstack":[]}\n'
+    }, {
+       "name" : "frozenset",
+       "asm" : """
+            proto 0x4
+            mark
+            binint1 1
+            binint1 2
+            binint1 3
+            frozenset
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":9,"type":"PY_FROZEN_SET","value":[{"offset":3,"type":"PY_INT","value":1},{"offset":5,"type":"PY_INT","value":2},{"offset":7,"type":"PY_INT","value":3}]}],"popstack":[]}\n'
+    }, {
+       "name" : "additems",
+       "asm" : """
+			proto 0x4
+			empty_set
+			mark
+			binint1 1
+			binint1 2
+			binint1 3
+			additems
+			stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_SET","value":[{"offset":4,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}]}],"popstack":[]}\n'
+    }, {
+       "name" : "additems to list (invalid)",
+       "asm" : """
+			proto 0x4
+			empty_list
+			mark
+			binint1 1
+			binint1 2
+			binint1 3
+			additems
+			stop
+       """,
+       "ret" : '{"stack":[{"offset":10,"type":"PY_WHAT","value":[{"offset":10,"Op":"Initial Object","args":[{"offset":2,"type":"PY_LIST","value":[]}]},{"offset":10,"Op":"additems","args":[{"offset":4,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}]}]}],"popstack":[]}\n'
     }
 ]
 

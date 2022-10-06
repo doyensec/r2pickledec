@@ -255,6 +255,24 @@ static inline bool dump_list(PrintInfo *nfo, PyObj *obj) {
 	return ret;
 }
 
+static inline bool dump_set(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT ();
+	bool ret = printer_append (nfo, "set(");
+	ret &= dump_iter (nfo, obj);
+	ret &= printer_append (nfo, ")");
+	ret &= newline(nfo, obj);
+	return ret;
+}
+
+static inline bool dump_frozen_set(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT ();
+	bool ret = printer_append (nfo, "frozenset(");
+	ret &= dump_iter (nfo, obj);
+	ret &= printer_append (nfo, ")");
+	ret &= newline(nfo, obj);
+	return ret;
+}
+
 static inline bool dump_iter_dict(PrintInfo *nfo, PyObj *obj_iter) {
 	// recursees, so save and modify nfo state
 	bool nfofirst = nfo->first;
@@ -353,19 +371,19 @@ static inline bool dump_oper_build(PrintInfo *nfo, PyOper *pop, const char *vn) 
 }
 
 
-static inline bool dump_oper_append(PrintInfo *nfo, PyObj *obj, const char *vn) {
+static inline bool dump_oper_meth(PrintInfo *nfo, PyObj *obj, const char *meth, const char *vn) {
 	return obj
 		&& PCOLORSTR (vn, func_var)
-		&& printer_appendf (nfo, ".append(")
+		&& printer_appendf (nfo, ".%s(", meth)
 		&& dump_obj (nfo, obj)
 		&& printer_append (nfo, ")\n");
 }
 
-static inline bool dump_oper_appends(PrintInfo *nfo, PyOper *pop, const char *vn) {
+static inline bool dump_oper_meth_s(PrintInfo *nfo, PyOper *pop, const char *meth, const char *vn) {
 	PyObj *obj;
 	RListIter *iter;
 	r_list_foreach (pop->stack, iter, obj) {
-		if (!dump_oper_append (nfo, obj, vn)) {
+		if (!dump_oper_meth (nfo, obj, meth, vn)) {
 			return false;
 		}
 	}
@@ -412,9 +430,11 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	case OP_BUILD:
 		return dump_oper_build (nfo, pop, vn);
 	case OP_APPEND:
-		return dump_oper_append (nfo, r_list_last (pop->stack), vn);
+		return dump_oper_meth (nfo, r_list_last (pop->stack), "append", vn);
 	case OP_APPENDS:
-		return dump_oper_appends (nfo, pop, vn);
+		return dump_oper_meth_s (nfo, pop, "append", vn);
+	case OP_ADDITEMS:
+		return dump_oper_meth_s (nfo, pop, "add", vn);
 	case OP_SETITEM:
 	case OP_SETITEMS:
 		return dump_oper_setitems (nfo, pop, vn);
@@ -481,6 +501,10 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 		return dump_tuple (nfo, obj);
 	case PY_LIST:
 		return dump_list (nfo, obj);
+	case PY_SET:
+		return dump_set (nfo, obj);
+	case PY_FROZEN_SET:
+		return dump_frozen_set (nfo, obj);
 	case PY_DICT:
 		return dump_dict (nfo, obj);
 	case PY_FUNC:
@@ -551,64 +575,4 @@ bool print_info_init(PrintInfo *nfo, RCore *core) {
 	}
 	nfo->outstack = r_list_newf ((RListFree)r_strbuf_free);
 	return nfo->outstack? true: false;
-}
-
-const char *py_type_to_name(PyType t) {
-	switch (t) {
-	case PY_WHAT:
-		return "PY_WHAT";
-	case PY_NONE:
-		return "PY_NONE";
-	case PY_INT:
-		return "PY_INT";
-	case PY_FLOAT:
-		return "PY_FLOAT";
-	case PY_STR:
-		return "PY_STR";
-	case PY_FUNC:
-		return "PY_FUNC";
-	case PY_TUPLE:
-		return "PY_TUPLE";
-	case PY_LIST:
-		return "PY_LIST";
-	case PY_BOOL:
-		return "PY_BOOL";
-	case PY_DICT:
-		return "PY_DICT";
-	case PY_NOT_RIGHT:
-	default:
-		r_warn_if_reached ();
-		return "UNKOWN";
-	}
-}
-
-const char *py_op_to_name(PyOp t) {
-	switch (t) {
-	case OP_OBJ:
-		return "obj";
-	case OP_INST:
-		return "inst";
-	case OP_REDUCE:
-		return "reduce";
-	case OP_BUILD:
-		return "build";
-	case OP_NEWOBJ:
-		return "newobj";
-	case OP_NEWOBJ_EX:
-		return "newobj_ex";
-	case OP_APPEND:
-		return "append";
-	case OP_SETITEM:
-		return "setitem";
-	case OP_FAKE_INIT:
-		return "Initial Object";
-	case OP_SETITEMS:
-		return "setitems";
-	case OP_APPENDS:
-		return "appends";
-	default:
-		R_LOG_ERROR ("Unkown opcode %d", t);
-		r_warn_if_reached ();
-		return "UNKOWN OPCODE";
-	}
 }

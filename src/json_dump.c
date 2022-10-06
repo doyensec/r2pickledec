@@ -185,9 +185,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_STR:
 		ret &= pj_s (pj, obj->py_str)? true: false;
 		break;
+	case PY_FROZEN_SET:
+	case PY_SET:
 	case PY_LIST:
-		ret &= pj_list (pj, obj->py_iter, path);
-		break;
 	case PY_TUPLE:
 		ret &= pj_list (pj, obj->py_iter, path);
 		break;

@@ -1,6 +1,6 @@
 /* radare - LGPL - Copyright 2022 - bemodtwz */
-#ifndef PICKLE_DEC
-#define PICKLE_DEC
+#ifndef PY_DEC_UTILS
+#define PY_DEC_UTILS
 #include <r_core.h>
 
 #define MEMO_LEN 128
@@ -89,7 +89,7 @@ typedef enum python_type {
 	PY_NOT_RIGHT = 0, // initial invalid type
 	PY_WHAT, // don't know what it is, just accept operations on it
 	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_FUNC,
-	PY_TUPLE, PY_LIST, PY_DICT, // iters
+	PY_TUPLE, PY_LIST, PY_DICT, PY_SET, PY_FROZEN_SET // iters
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
 	// pairs. No overwrites happen, to preserve data that might of been lost
 } PyType;
@@ -136,4 +136,8 @@ struct python_object {
 								   // understanding, just go with it
 	};
 };
+
+const char *py_type_to_name(PyType t);
+const char *py_op_to_name(PyOp t);
+bool pytype_has_depth(PyType t);
 #endif

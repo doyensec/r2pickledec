@@ -57,24 +57,10 @@ static inline bool check_push(RRBTree *tree, PyObj *obj) {
 }
 
 static inline bool check_obj(RRBTree *tree, PyObj *obj) {
-	switch (obj->type) {
-	case PY_INT:
-	case PY_STR:
-	case PY_BOOL:
-	case PY_NONE:
-	case PY_FLOAT:
-	case PY_FUNC:
-		return true;
-	case PY_TUPLE:
-	case PY_LIST:
-	case PY_DICT:
-	case PY_WHAT:
+	if (pytype_has_depth (obj->type)) {
 		return check_push (tree, obj);
-	case PY_NOT_RIGHT:
-	default:
-		r_warn_if_reached ();
-		return false;
 	}
+	return true;
 }
 
 // iterate over all objects looking for self reference

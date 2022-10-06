@@ -3,6 +3,7 @@
 #include <r_util.h>
 #include "json_dump.h"
 #include "self_ref.h"
+#include "pyobjutil.h"
 
 #define TAB "\t"
 
@@ -15,6 +16,8 @@ static void py_obj_free(PyObj *obj) {
 		case PY_STR:
 			free ((void *)obj->py_str);
 			break;
+		case PY_SET:
+		case PY_FROZEN_SET:
 		case PY_DICT:
 		case PY_LIST:
 		case PY_TUPLE:
@@ -280,8 +283,8 @@ static inline bool op_dup(PMState *pvm) {
 	return false;
 }
 
-static inline PyObj *py_iter_new(PMState *pvm, int type) {
-	r_return_val_if_fail (type == PY_LIST || type == PY_DICT || type == PY_TUPLE, NULL);
+static inline PyObj *py_iter_new(PMState *pvm, PyType type) {
+	r_return_val_if_fail (pytype_has_depth (type), NULL);
 	PyObj *obj = py_obj_new (pvm, type);
 	if (obj) {
 		obj->py_iter = r_list_newf ((RListFree)py_obj_free);
@@ -406,18 +409,16 @@ static inline bool op_append(PMState *pvm) {
 	return false;
 }
 
-static inline bool op_appends(PMState *pvm) {
+static inline bool op_appends(PMState *pvm, PyOp op, PyType type) {
 	RList *prev_stack = (RList *)r_list_last (pvm->metastack);
 	if (prev_stack) {
 		PyObj *obj = (PyObj *)r_list_last (prev_stack);
 		if (obj) {
-			if (obj->type != PY_LIST) {
-				return py_what_addop_stack (pvm, OP_APPENDS);
+			if (obj->type != type) {
+				return py_what_addop_stack (pvm, op);
 			}
-			if (obj->type == PY_LIST) {
-				return py_iter_append_mark (pvm, obj, PY_LIST);
-			} else {
-				R_LOG_ERROR ("can't append to non-PY_LIST yet");
+			if (obj->type == type) {
+				return py_iter_append_mark (pvm, obj, type);
 			}
 		} else {
 			R_LOG_ERROR ("No element to append to at 0x%" PFMT64x, pvm->offset);
@@ -720,7 +721,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_APPEND:
 		return op_append (pvm);
 	case OP_APPENDS:
-		return op_appends (pvm);
+		return op_appends (pvm, OP_APPEND, PY_LIST);
 	case OP_LIST:
 		return op_type_create_append (pvm, PY_LIST);
 	// dicts
@@ -737,6 +738,13 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_newbool (pvm, true);
 	case OP_NEWFALSE:
 		return op_newbool (pvm, false);
+	// sets
+	case OP_FROZENSET:
+		return op_type_create_append (pvm, PY_FROZEN_SET);
+	case OP_EMPTY_SET:
+		return op_iter_n (pvm, 0, PY_SET);
+	case OP_ADDITEMS:
+		return op_appends (pvm, OP_ADDITEMS, PY_SET);
 	// memo
 	case OP_MEMOIZE:
 		return op_memorize (pvm);
@@ -761,9 +769,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_EXT2:
 	case OP_EXT4:
 	// PROTO 4
-	case OP_EMPTY_SET:
-	case OP_ADDITEMS:
-	case OP_FROZENSET:
 	case OP_NEWOBJ_EX:
 	case OP_STACK_GLOBAL:
 	case OP_NEXT_BUFFER:
