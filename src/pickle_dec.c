@@ -680,6 +680,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_BINFLOAT:
 		return op_float (pvm, op, false);
 	// strings TODO: distinguish between b'', u'', and ''
+	case OP_STRING:
+	case OP_UNICODE:
 	case OP_BINUNICODE8:
 	case OP_BINBYTES8:
 	case OP_BYTEARRAY8:
@@ -752,8 +754,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_LONG:
 	case OP_PERSID:
 	case OP_BINPERSID:
-	case OP_STRING:
-	case OP_UNICODE:
 	case OP_GET:
 	case OP_PUT:
 	// registry
