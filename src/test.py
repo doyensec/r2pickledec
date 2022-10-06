@@ -343,7 +343,7 @@ tests = [
             appends
             stop
        """,
-       "ret" : ''
+       "ret" : '{"stack":[{"offset":11,"type":"PY_LIST","value":[{"offset":14,"type":"PY_INT","value":0},{"offset":16,"type":"PY_DICT","value":[[{"offset":18,"type":"PY_STR","value":"a"},{"offset":22,"type":"PY_LIST","value":[{"offset":25,"type":"PY_INT","value":0},{"offset":27,"type":"PY_INT","value":1},{"offset":29,"type":"PY_LIST","value":[{"offset":31,"type":"PY_DICT","value":[[{"offset":34,"type":"PY_STR","value":"b"},{"offset":38,"type":"PY_STR","value":"c"}],[{"offset":42,"type":"PY_STR","value":"d"},{"offset":29,"type":"PY_LIST","prev_seen":".stack[0].value[1].value[0][1].value[2]"}]]}]}]}]]},{"offset":52,"type":"PY_INT","value":1}]}],"popstack":[]}\n'
     }
 ]
 

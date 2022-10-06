@@ -215,7 +215,12 @@ bool json_dump_state(PJ *pj, PMState *pvm) {
 		&& pj_klist (pj, "popstack", pvm->popstack, path)
 		&& pj_end (pj)
 	) {
+		if (r_list_length (path)) {
+			r_warn_if_reached ();
+		}
+		r_list_free (path);
 		return true;
 	}
+	r_list_free (path);
 	return false;
 }
