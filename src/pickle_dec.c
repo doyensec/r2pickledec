@@ -355,12 +355,12 @@ static inline bool op_iter_n(PMState *pvm, int n, PyType type) {
 				return false;
 			}
 		}
-	}
-	if (!r_list_push (pvm->stack, obj)) {
+		if (r_list_push (pvm->stack, obj)) {
+			return true;
+		}
 		py_obj_free (obj);
-		return false;
 	}
-	return true;
+	return false;
 }
 
 static inline bool stack_n_expected_type(RList *objl, int argc, PyType type) {
