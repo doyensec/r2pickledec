@@ -482,7 +482,7 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 }
 
 bool dump_obj(PrintInfo *nfo, PyObj *obj) {
-	if (!nfo->first && obj->selfref) {
+	if (!nfo->first && obj->refcnt) {
 		return prepend_obj (nfo, obj);
 	}
 

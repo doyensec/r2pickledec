@@ -79,7 +79,7 @@ tests = [
             binget 1
             stop
        """,
-       "ret" : '{"stack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"popstack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}]}\n'
+       "ret" : '{"stack":[{"offset":2,"type":"PY_LIST","value":[{"offset":5,"type":"PY_INT","value":42}]}],"popstack":[{"offset":2,"type":"PY_LIST","prev_seen":".stack[0]"}]}\n'
     }, {
        "name" : "OP Float",
        "asm" : """

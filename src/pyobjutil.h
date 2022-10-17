@@ -123,7 +123,6 @@ struct python_object {
 	ut64 offset;
 	ut64 memo_id;
 	char *varname; // used by printer
-	bool selfref; // python does not descriminate against barbers
 	union {
 		bool py_bool;
 		st32 py_int;

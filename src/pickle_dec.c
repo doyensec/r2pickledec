@@ -3,7 +3,6 @@
 #include <r_cons.h>
 #include <r_util.h>
 #include "json_dump.h"
-#include "self_ref.h"
 #include "pyobjutil.h"
 
 #define TAB "\t"
@@ -848,7 +847,6 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		rbuf += size;
 	}
 	empty_memo (pvm);
-	self_ref_mark (pvm);
 	return true;
 }
 

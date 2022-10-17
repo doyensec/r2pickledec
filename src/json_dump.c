@@ -149,7 +149,7 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	) {
 		return false;
 	}
-	if (obj->selfref) {
+	if (obj->refcnt) {
 		if (obj->varname) {
 			return pj_ks (pj, "prev_seen", obj->varname) && pj_end (pj);
 		}
