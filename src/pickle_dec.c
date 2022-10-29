@@ -7,6 +7,13 @@
 
 #define TAB "\t"
 
+static const char *help_msg[] = {
+	"Usage:", "pdP[j]", "Decompile python pickle",
+	"pdP", "", "Decompile python pickle until STOP, eof or bad opcode",
+	"pdPj", "", "JSON output",
+	NULL
+};
+
 // Free stuff
 static void py_obj_free(PyObj *obj) {
 	if (obj && obj->refcnt-- <= 0) {
@@ -856,6 +863,12 @@ static int pickle_dec(void *user, const char *input) {
 	}
 	input += 3;
 	RCore *c = (RCore *)user;
+
+	if (strchr (input, '?')) {
+		r_core_cmd_help (c, help_msg);
+		return 1;
+	}
+
 	PMState state = {0};
 	if (init_machine_state (c, &state)) {
 		state.break_on_stop = true;
