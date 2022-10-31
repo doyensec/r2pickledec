@@ -62,6 +62,10 @@ static inline void empty_state(PMState *pvm) {
 }
 
 static inline bool init_machine_state(RCore *c, PMState *pvm) {
+	if (strcmp(r_config_get (c->config, "asm.arch"), "pickle")) {
+		R_LOG_ERROR ("Arch must be set to picke, use `e asm.config = pickle`")
+		return false;
+	}
 	pvm->start = pvm->offset = c->offset;
 	pvm->end = UT64_MAX; // TODO: allow user to set an end
 	pvm->verbose = r_config_get_b (c->config, "anal.verbose");
