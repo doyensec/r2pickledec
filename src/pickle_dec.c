@@ -828,12 +828,12 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		}
 		RAnalOp op;
 		r_anal_op_init(&op);
-		int size = r_anal_op (c->anal, &op, pvm->offset, rbuf, bsize, R_ARCH_OP_MASK_BASIC);
-		if (size <= 0) {
+		if (r_anal_op (c->anal, &op, pvm->offset, rbuf, bsize, R_ARCH_OP_MASK_BASIC) <= 0) {
 			R_LOG_ERROR ("Failed to disassemble op at offset: 0x"PFMT64x, pvm->offset);
 			return false;
 		}
-		R_LOG_DEBUG ("[0x%"PFMT64x"] OP(%02x): %s", pvm->offset, ((char)rbuf[0]) & 0xff, op.mnemonic);
+		int size = op.size;
+		R_LOG_DEBUG ("[0x%"PFMT64x"] OP(%02x) len: %d: %s", pvm->offset, ((char)rbuf[0]) & 0xff, op.size, op.mnemonic);
 		bool exec = exec_op (c, pvm, &op, (char)rbuf[0]);
 		r_anal_op_fini (&op);
 		if (!exec) {

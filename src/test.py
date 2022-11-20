@@ -407,6 +407,7 @@ def test_to_file(asm):
 
 r2 = r2pipe.open("-")
 r2.cmd("e asm.arch = pickle")
+r2.cmd("e asm.bits = 8")
 #r2.cmd("e log.level = 5")
 for i in tests:
     assemble_in_cache(r2, i["asm"])
