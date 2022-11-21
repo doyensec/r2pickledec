@@ -114,7 +114,7 @@ tests = [
             binget 4
             stop
        """,
-       "ret" : '{"stack":[{"offset":7,"type":"PY_INT","value":2},{"offset":15,"type":"PY_INT","value":4}],"popstack":[{"offset":3,"type":"PY_INT","value":1},{"offset":7,"type":"PY_INT","value":2},{"offset":11,"type":"PY_INT","value":3},{"offset":15,"type":"PY_INT","value":4}]}\n'
+       "ret" : '{"stack":[{"offset":7,"type":"PY_INT","value":2},{"offset":15,"type":"PY_INT","value":4}],"popstack":[{"offset":3,"type":"PY_INT","value":1},{"offset":7,"type":"PY_INT","prev_seen":".stack[0]"},{"offset":11,"type":"PY_INT","value":3},{"offset":15,"type":"PY_INT","prev_seen":".stack[1]"}]}\n'
     }, {
        "name" : "Reduce os.system",
        "asm" : """
