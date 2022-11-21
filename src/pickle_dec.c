@@ -1,5 +1,6 @@
 /* radare - LGPL - Copyright 2022 - bemodtwz */
 #include <r_core.h>
+#include <r_cons.h>
 #include <r_util.h>
 #include "json_dump.h"
 #include "self_ref.h"
@@ -854,7 +855,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 static inline bool dump_json(RCore *c, PMState *pvm) {
 	PJ *pj = r_core_pj_new (c);
 	if (pj && json_dump_state (pj, pvm)) {
-		r_cons_printf ("%s\n", pj_string (pj));
+		r_cons_print (pj_string (pj));
 		pj_free (pj);
 		return true;
 	}
@@ -887,7 +888,6 @@ static int pickle_dec(void *user, const char *input) {
 			print_info_clean (&nfo);
 		}
 	}
-	r_cons_flush ();
 	empty_state (&state);
 	return 1;
 }
