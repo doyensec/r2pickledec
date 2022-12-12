@@ -72,8 +72,17 @@ static inline bool pj_klist(PJ *pj, char *name, RList *l, RList *path) {
 static inline bool py_func(PJ *pj, PyObj *obj, RList *path) {
 	if (
 		pj_o (pj)
-		&& pj_ks (pj, "module", obj->py_func.module)
-		&& pj_ks (pj, "name", obj->py_func.name)
+
+		&& path_push (path, strdup(".module"))
+		&& pj_k (pj, "module")
+		&& py_obj (pj, obj->py_func.module, path)
+		&& path_pop (path)
+
+		&& path_push (path, strdup(".name"))
+		&& pj_k (pj, "name")
+		&& py_obj (pj, obj->py_func.name, path)
+		&& path_pop (path)
+
 		&& pj_end (pj)
 	) {
 		return true;

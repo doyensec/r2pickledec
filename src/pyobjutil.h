@@ -106,8 +106,8 @@ typedef struct pickle_machine_state {
 typedef struct python_object PyObj;
 
 typedef struct python_func {
-	const char *module;
-	const char *name;
+	PyObj *module;
+	PyObj *name;
 } PyFunc;
 
 // things you can do to a python object of unkonwn type
