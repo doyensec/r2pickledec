@@ -328,12 +328,15 @@ static inline bool dump_func(PrintInfo *nfo, PyObj *obj) {
 	bool ret =  printer_append (nfo, "_find_class(");
 	bool first = nfo->first;
 	nfo->first = false;
+	bool retsave = nfo->ret;
+	nfo->ret = false;
 	ret &= dump_obj (nfo, obj->py_func.module);
 	ret &= printer_append (nfo, ", ");
 	ret &= dump_obj (nfo, obj->py_func.name);
 	nfo->first = first;
 	ret &= printer_append (nfo, ")");
 	ret &= newline(nfo, obj);
+	nfo->ret = retsave;
 	return ret;
 }
 
