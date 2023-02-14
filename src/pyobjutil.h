@@ -96,7 +96,7 @@ typedef enum python_type {
 
 typedef struct pickle_machine_state {
 	RList *stack, *metastack, *popstack;
-	RRBTree *memo;
+	HtUP *memo;
 	bool break_on_stop;
 	ut64 start, offset, end;
 	bool verbose;

@@ -51,14 +51,19 @@ static void py_obj_free(PyObj *obj) {
 }
 
 static inline void empty_memo (PMState *pvm) {
-	r_crbtree_free (pvm->memo);
+	ht_up_free (pvm->memo);
 	pvm->memo = NULL;
 }
+
 static inline void empty_state(PMState *pvm) {
 	empty_memo (pvm);
 	r_list_free (pvm->stack);
 	r_list_free (pvm->metastack);
 	r_list_free (pvm->popstack);
+}
+
+static void _kv_free(HtUPKv *kv) {
+	py_obj_free (kv->value);
 }
 
 static inline bool init_machine_state(RCore *c, PMState *pvm) {
@@ -74,7 +79,7 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 	pvm->stack = r_list_newf ((RListFree) py_obj_free);
 	pvm->popstack = r_list_newf ((RListFree) py_obj_free);
 	pvm->metastack = r_list_newf ((RListFree) r_list_free);
-	pvm->memo = r_crbtree_new((RRBFree) py_obj_free);
+	pvm->memo = ht_up_new (NULL, _kv_free, NULL);
 
 	if (!pvm->stack || !pvm->memo || !pvm->metastack) {
 		return false;
@@ -89,6 +94,7 @@ static inline PyObj *py_obj_new(PMState *pvm, PyType type) {
 		R_LOG_DEBUG ("\tObj Alloc %p", obj);
 		obj->type = type;
 		obj->offset = pvm->offset;
+		obj->memo_id = UT64_MAX;
 	}
 	return obj;
 }
@@ -223,63 +229,30 @@ static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 	return false;
 }
 
-static int _memo_cmp(void *incoming, void *in, void *user) {
-	ut64 test = ((PyObj *)incoming)->memo_id;
-	PyObj *obj = (PyObj *)in;
-	if (test > obj->memo_id) {
-		return 1;
-	}
-	return obj->memo_id == test? 0: -1;
-}
-
-static int _memo_int_cmp(void *incoming, void *in, void *user) {
-	ut64 test = *(st64 *)incoming;
-	PyObj *obj = (PyObj *)in;
-	if (test > obj->memo_id) {
-		return 1;
-	}
-	return obj->memo_id == test? 0: -1;
-}
-
 // memo stuff
 static inline bool memo_put(PMState *pvm, st64 loc) {
-	if (loc < 0) {
-		return false;
-	}
-	// remove old if it exists
-	PyObj *obj = r_crbtree_take (pvm->memo, &loc, _memo_int_cmp, NULL);
-	if (obj) {
-		obj->memo_id = 0;
-		py_obj_free (obj);
-	}
-	obj = NULL;
-
-	// add from top of stack
-	obj = obj_stack_peek (pvm->stack, true); // will inc refcnt
-	if (obj) {
-		obj->memo_id = loc;
-		if (r_crbtree_insert (pvm->memo, obj, _memo_cmp, NULL)) {
-			R_LOG_DEBUG ("\t[++] Memo[%d]  %p", loc, obj);
+	if (loc >= 0) {
+		PyObj *obj = obj_stack_peek (pvm->stack, true); // will inc refcnt
+		if (ht_up_update (pvm->memo, loc, obj)) {
+			R_LOG_DEBUG ("\t[++] Memoid %d of %u is %p", loc, pvm->memo->count, obj);
 			return true;
 		}
+		py_obj_free (obj);
 	}
-	py_obj_free (obj);
 	return false;
 }
 
 static inline bool op_memorize(PMState *pvm) {
-	return memo_put (pvm, pvm->memo->size);
-}
-
-static inline size_t memo_len(RRBTree *tree) {
-	return tree->size;
+	return memo_put (pvm, pvm->memo->count);
 }
 
 static inline bool memo_get(PMState *pvm, st64 loc) {
-	PyObj *obj = r_crbtree_find(pvm->memo, &loc, _memo_int_cmp, NULL);
-	if (obj && r_list_push (pvm->stack, obj)) {
-		obj->refcnt++;
-		return true;
+	if (loc >= 0) {
+		PyObj *obj = ht_up_find (pvm->memo, loc, NULL);
+		if (obj && r_list_push (pvm->stack, obj)) {
+			obj->refcnt++;
+			return true;
+		}
 	}
 	R_LOG_ERROR ("Failed memo get %u at 0x%"PFMT64x, loc, pvm->offset);
 	return false;

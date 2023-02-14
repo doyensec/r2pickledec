@@ -9,7 +9,7 @@ static inline void printer_drain(PrintInfo *nfo) {
 	if (nfo->out && r_strbuf_length (nfo->out)) {
 		char *buf = r_strbuf_drain_nofree (nfo->out);
 		if (buf) {
-			r_cons_printf ("%s", buf);
+			r_cons_print (buf);
 			free (buf);
 		}
 	}
@@ -54,7 +54,7 @@ static inline bool printer_appendf(PrintInfo *nfo, const char *fmt, ...) {
 
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 	if (!obj->varname) {
-		if (obj->memo_id > 0) {
+		if (obj->memo_id != UT64_MAX) {
 			obj->varname = r_str_newf ("memo_%"PFMT64x, obj->memo_id);
 		} else {
 			obj->varname = r_str_newf ("var_%"PFMT64x, nfo->varid++);
@@ -540,7 +540,7 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 		printer_drain (nfo);
 
 		nfo->first = true;
-		if (len == 0 && !strcmp (n, "VM")) {
+		if (!len && !strcmp (n, "VM")) {
 			nfo->ret = true;
 		}
 		if (!dump_obj (nfo, obj)) {
@@ -553,7 +553,7 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 
 bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 	bool ret = true;
-	if (nfo->popstack) {
+	if (nfo->popstack && r_list_length (pvm->popstack)) {
 		ret &= dump_stack (nfo, pvm->popstack, "POP");
 	}
 	if (nfo->stack) {
@@ -561,7 +561,7 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 	}
 	printer_drain_free (nfo);
 	if (!ret || warn) {
-		r_cons_printf ("Raise Exception('INCOMPLETE!!! Pickle did not completely extract, check error log')\n");
+		r_cons_print ("Raise Exception('INCOMPLETE!!! Pickle did not completely extract, check error log')\n");
 	}
 	return ret;
 }
@@ -577,8 +577,10 @@ bool print_info_init(PrintInfo *nfo, RCore *core) {
 	nfo->stack = true;
 	nfo->popstack = true;
 	if (core && core->cons && core->cons->context) {
-		if (r_cons_is_tty() || r_config_get_b (core->config, "scr.color.pipe")) {
-			nfo->pal = &core->cons->context->pal;
+		if (r_config_get_b (core->config, "scr.color")) {
+			if (r_cons_is_tty() || r_config_get_b (core->config, "scr.color.pipe")) {
+				nfo->pal = &core->cons->context->pal;
+			}
 		}
 	}
 	nfo->outstack = r_list_newf ((RListFree)r_strbuf_free);
