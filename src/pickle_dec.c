@@ -837,11 +837,16 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		int size = op.size;
 		R_LOG_DEBUG ("[0x%"PFMT64x"] OP(%02x) len: %d: %s", pvm->offset, ((char)rbuf[0]) & 0xff, op.size, op.mnemonic);
 		bool exec = exec_op (c, pvm, &op, (char)rbuf[0]);
-		r_anal_op_fini (&op);
 		if (!exec) {
-			R_LOG_ERROR ("Failed to exec opcode at offset: 0x%" PFMT64x " (op: '%s')", pvm->offset, op.mnemonic);
+			if (op.mnemonic) {
+				R_LOG_ERROR ("Failed to exec opcode '%s' at offset: 0x%" PFMT64x, op.mnemonic,pvm->offset);
+			} else {
+				R_LOG_ERROR ("Failed to exec unkown opcode 0x%02x at offset: 0x%" PFMT64x, rbuf[0], pvm->offset);
+			}
+			r_anal_op_fini (&op);
 			return false;
 		}
+		r_anal_op_fini (&op);
 
 		// adjust read loc for next loop
 		pvm->offset += size;
