@@ -5,31 +5,45 @@
 #define PCOLOR_RESET() printer_append (nfo, PALCOLOR (reset))
 #define PCOLORSTR(str, x) printer_appendf (nfo, "%s%s%s", PALCOLOR (x), str, PALCOLOR (reset))
 
-static inline void printer_drain(PrintInfo *nfo) {
-	if (nfo->out && r_strbuf_length (nfo->out)) {
-		char *buf = r_strbuf_drain_nofree (nfo->out);
-		if (buf) {
-			r_cons_print (buf);
-			free (buf);
+#define PSTATE(nfo, x) ((PrState *)r_list_last (nfo->outstack))->x
+
+static inline RStrBuf *printer_getout(PrintInfo *nfo, bool create) {
+	PrState *ps = r_list_last (nfo->outstack);
+	if (!ps->out && create) {
+		ps->out = r_strbuf_new ("");
+	}
+	return ps->out;
+}
+
+static inline void pstate_free(PrState *ps) {
+	if (ps) {
+		r_strbuf_free (ps->out);
+		free (ps);
+	}
+}
+
+static inline void pstate_drain(PrState *ps, bool freeit) {
+	if (ps && ps->out) {
+		char *buf = NULL;
+		if (freeit) {
+			r_strbuf_length (ps->out);
+			buf = r_strbuf_drain (ps->out);
+			ps->out = NULL;
+		} else {
+			buf = r_strbuf_drain_nofree (ps->out);
 		}
+		r_cons_print (buf);
+		free (buf);
 	}
 }
 
-static inline void printer_drain_free(PrintInfo *nfo) {
-	printer_drain (nfo);
-	r_strbuf_free (nfo->out);
-	nfo->out = NULL;
-}
-
-static inline RStrBuf *printer_getout(PrintInfo *nfo) {
-	if (!nfo->out) {
-		nfo->out = r_strbuf_new ("");
-	}
-	return nfo->out;
+static inline void printer_drain(PrintInfo *nfo) {
+	PrState *ps = r_list_last (nfo->outstack);
+	pstate_drain (ps, false);
 }
 
 static inline bool printer_append(PrintInfo *nfo, const char *str) {
-	RStrBuf *buf = printer_getout (nfo);
+	RStrBuf *buf = printer_getout (nfo, true);
 	if (buf && r_strbuf_append (buf, str)) {
 		return true;
 	}
@@ -39,7 +53,7 @@ static inline bool printer_append(PrintInfo *nfo, const char *str) {
 
 static inline bool printer_appendf(PrintInfo *nfo, const char *fmt, ...) {
 	r_return_val_if_fail (nfo && fmt, false);
-	RStrBuf *buf = printer_getout (nfo);
+	RStrBuf *buf = printer_getout (nfo, true);
 	if (buf) {
 		va_list ap;
 		va_start (ap, fmt);
@@ -50,6 +64,45 @@ static inline bool printer_appendf(PrintInfo *nfo, const char *fmt, ...) {
 
 	R_LOG_ERROR ("Failed to append to buffer");
 	return false;
+}
+
+static inline PrState *printer_push_state(PrintInfo *nfo, bool prepend) {
+	PrState *ps = R_NEW0 (PrState);
+	PrState *last = r_list_last (nfo->outstack);
+
+	if (!r_list_push (nfo->outstack, ps)) {
+		pstate_free (ps);
+		return NULL;
+	}
+
+	if (last) {
+		memcpy (ps, last, sizeof (*ps));
+		ps->out = NULL;
+	}
+	ps->prepend = prepend;
+	return ps;
+}
+
+static bool printer_pop_state(PrintInfo *nfo) {
+	PrState *ps = r_list_pop (nfo->outstack);
+	r_return_val_if_fail (ps, false);
+	bool ret = true;
+	if (ps->prepend) {
+		pstate_drain (ps, true);
+	} else {
+		if (ps->out && r_strbuf_length (ps->out)) {
+			char *buf = r_strbuf_drain (ps->out);
+			ps->out = NULL;
+			if (buf) {
+				ret &= printer_append (nfo, buf);
+				free (buf);
+			} else {
+				ret = false;
+			}
+		}
+	}
+	pstate_free (ps);
+	return ret;
 }
 
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
@@ -63,52 +116,61 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 	return obj->varname;
 }
 
-// prepend nfo->out with obj declaration, then write obj name
-static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
-	r_return_val_if_fail (!nfo->first, false);
-	// save old state
-	bool nforet = nfo->ret;
-	int tabs = nfo->tabs;
-	if (!r_list_push (nfo->outstack, nfo->out)) {
-		return false;
-	}
-
-	// prepends always start the line, never return
-	nfo->first = true;
-	nfo->ret = false;
-	nfo->out = NULL;
-	nfo->tabs = 0;
-
-	bool ret = dump_obj (nfo, obj);
-
-	// restore prev state with previous buffer
-	printer_drain_free (nfo);
-	nfo->out = r_list_pop (nfo->outstack);
-	nfo->first = false;
-	nfo->ret = nforet;
-	nfo->tabs = tabs;
-
-	if (ret) {
-		return PCOLORSTR(obj->varname, func_var);
+static bool iter_get_wrap(PyType t, char **start, char **end) {
+	switch (t) {
+	case PY_TUPLE:
+		*start = "(";
+		*end = ")";
+		return true;
+	case PY_LIST:
+		*start = "[";
+		*end = "]";
+		return true;
+	case PY_SET:
+		*start = "set((";
+		*end = "))";
+		return true;
+	case PY_FROZEN_SET:
+		*start = "frozenset((";
+		*end = "))";
+		return true;
+	default:
+		break;
 	}
 	return false;
 }
 
-#define PREPRINT() {\
-	int o = var_pre_print (nfo, obj); \
-	if (o) { \
-		if (o < 0) { \
-			R_LOG_ERROR ("Alloc failed"); \
-			return false; \
-		} \
-		return true; \
-	} \
+// prepend nfo->out with obj declaration, then write obj name
+static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
+	r_return_val_if_fail (!PSTATE (nfo, first), false);
+	PrState *ps = printer_push_state (nfo, true);
+	if (ps) {
+		// prepends always start the line, never return
+		ps->first = true;
+		ps->ret = false;
+		ps->out = NULL;
+		ps->tabs = 0;
+		if (dump_obj (nfo, obj)) {
+			printer_pop_state (nfo);
+			return PCOLORSTR (obj->varname, func_var);
+		}
+	}
+	return false;
+}
+
+static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
+	r_return_val_if_fail (split->type == PY_SPLIT, true);
+	PyOper *pop = split->reduce;
+	r_return_val_if_fail (pop->op == OP_REDUCE, true);
+	return pop->reduce.resolved == nfo->recurse;
 }
 
 // 0 ok, >0 printed var instead of obj (ie caller is done), <0 error
 static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
-	if (nfo->ret) {
-		printer_append (nfo, "return ");
+	if (PSTATE (nfo, ret)) {
+		if (!printer_append (nfo, "return ")) {
+			return -1;
+		}
 		if (obj->varname) {
 			if (!PCOLORSTR (obj->varname, func_var) || !printer_append (nfo, "\n")) {
 				return -1;
@@ -118,7 +180,7 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 		return 0;
 	}
 
-	if (nfo->first) {
+	if (PSTATE (nfo, first)) {
 		if (obj->varname) {
 			return 1;
 		}
@@ -141,49 +203,61 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 	return 0;
 }
 
-static inline bool newline(PrintInfo *nfo, PyObj *obj) {
+static inline bool newline(PrintInfo *nfo) {
 	if (!printer_append (nfo, PALCOLOR (reset))) {
 		return false;
 	}
-	if (nfo->first || nfo->ret) {
+	PrState *ps = r_list_last (nfo->outstack);
+	if (ps->first || ps->ret) {
 		return printer_append (nfo, "\n");
 	}
 	return true;
 }
 
+#define PREPRINT(nfo, obj) {\
+	int o = var_pre_print (nfo, obj); \
+	if (o) { \
+		if (o < 0) { \
+			R_LOG_ERROR ("Alloc failed"); \
+			return false; \
+		} \
+		return true; \
+	} \
+}
+
 static inline bool dump_bool(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	bool ret = printer_append (nfo, obj->py_bool? "True": "False");
-	ret &= newline (nfo, obj);
+	ret &= newline (nfo);
 	return ret;
 }
 
 static inline bool dump_int(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	return printer_append (nfo, PALCOLOR (num))
 		&& printer_appendf (nfo, "%d", obj->py_int)
-		&& newline (nfo, obj);
+		&& newline (nfo);
 }
 
 static inline bool dump_str(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	return PCOLOR_SET (ai_ascii)
 		&& printer_appendf (nfo, "\"%s\"", obj->py_str)
 		&& PCOLOR_RESET ()
-		&& newline (nfo, obj);
+		&& newline (nfo);
 }
 
 static inline bool dump_float(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	return printer_append (nfo, PALCOLOR (num))
 		&& printer_appendf (nfo, "%lf", obj->py_float)
-		&& newline (nfo, obj);
+		&& newline (nfo);
 }
 
 static inline bool dump_none(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	bool ret = printer_append (nfo, "None");
-	ret &= newline (nfo, obj);
+	ret &= newline (nfo);
 	return ret;
 }
 
@@ -192,7 +266,8 @@ static inline bool print_tabs(PrintInfo *nfo) {
 	if (!printer_append (nfo, "\n")) {
 		return false;
 	}
-	for (i = 0; i < nfo->tabs; i++) {
+	int max = PSTATE (nfo, tabs);
+	for (i = 0; i < max; i++) {
 		if (!printer_append (nfo, "\t")) {
 			return false;
 		}
@@ -200,143 +275,237 @@ static inline bool print_tabs(PrintInfo *nfo) {
 	return true;
 }
 
-static inline bool dump_iter(PrintInfo *nfo, PyObj *obj_iter) {
-	// recursees, so save and modify nfo state
-	bool nfofirst = nfo->first;
-	bool nforet = nfo->ret;
-	nfo->first = false;
-	nfo->ret = false;
+static bool split_has_more(RListIter *iter) {
+	while (iter) {
+		PyObj *obj = r_list_iter_get_data (iter);
+		if (obj && obj->type != PY_SPLIT) {
+			return true;
+		}
+		iter = r_list_iter_get_next (iter);
+	}
+	return false;
+}
 
-	bool tabbed = false;
-	if (r_list_length (obj_iter->py_iter) > 3) {
-		tabbed = true;
-		nfo->tabs++;
+// stop loop? either end of iters or iter is an unresolved split
+static inline bool split_stop(PrintInfo *nfo, PyObj *obj_iter) {
+	if (!obj_iter->iter_next) {
+		return true;
+	}
+	PyObj *obj = r_list_iter_get_data (obj_iter->iter_next);
+	if (obj->type == PY_SPLIT) {
+		r_return_val_if_fail (obj_iter->type != PY_TUPLE, true);
+
+		RListIter *next = r_list_iter_get_next (obj_iter->iter_next);
+		if (!split_has_more (next) || !split_is_resolved (nfo, obj)) {
+			return true;
+		}
+		obj_iter->iter_next = next;  // iter resolved, so we skip it
+	}
+	return false;
+}
+
+static bool iter_multi_line(PrintInfo *nfo, RListIter *iter, int depth) {
+	while (depth > 0) {
+		if (!iter) {
+			return false;
+		}
+		PyObj *obj = r_list_iter_get_data (iter);
+		if (obj->type == PY_SPLIT) {
+			if (split_is_resolved (nfo, obj)) {
+				iter = r_list_iter_get_next (iter);
+				continue;
+			}
+			return false;
+		}
+		iter = r_list_iter_get_next (iter);
+		depth--;
+	}
+	return true;
+}
+
+static inline bool dump_iter_loop(PrintInfo *nfo, PyObj *obj_iter) {
+	char *start, *end;
+	bool ret = iter_get_wrap (obj_iter->type, &start, &end);
+	if (!ret || !printer_append (nfo, start)) {
+		return false;
 	}
 
-	bool ret = true;
-	PyObj *obj;
-	RListIter *iter;
-	r_list_foreach (obj_iter->py_iter, iter, obj) {
-		if (tabbed) {
-			ret &= print_tabs (nfo);
-		}
-		ret &= dump_obj (nfo, obj);
-		if (!ret) {
-			break;
-		}
-		if (iter != r_list_tail (obj_iter->py_iter)) {
+	// recursees, so save and modify nfo state
+	PrState *ps = printer_push_state (nfo, false);
+	ps->first = false;
+	ps->ret = false;
+
+	if (!obj_iter->iter_next) {
+		obj_iter->iter_next = r_list_head (obj_iter->py_iter);
+	}
+
+	bool tabbed = false;
+	if (iter_multi_line (nfo, obj_iter->iter_next, 3)) {
+		tabbed = true;
+		ps->tabs++;
+	}
+
+	if (!split_stop (nfo, obj_iter)) {
+		while (obj_iter->iter_next) {
+			PyObj *obj = r_list_iter_get_data (obj_iter->iter_next);
+			if (tabbed) {
+				ret &= print_tabs (nfo);
+			}
+			ret &= dump_obj (nfo, obj);
+			if (!ret) {
+				break;
+			}
+
+			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
+			if (split_stop (nfo, obj_iter)) {
+				break;
+			}
 			ret &= printer_append (nfo, ", ");
 		}
 	}
+
+	printer_pop_state (nfo);
 	if (tabbed) {
-		nfo->tabs--;
 		ret &= print_tabs (nfo);
 	}
-	nfo->first = nfofirst;
-	nfo->ret = nforet;
-	return ret;
+	return ret && printer_append (nfo, end);
 }
 
-static inline bool dump_tuple(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
-	bool ret = printer_append (nfo, "(");
-	ret &= dump_iter (nfo, obj);
-	ret &= printer_append (nfo, ")");
-	ret &= newline(nfo, obj);
-	return ret;
+static inline bool iter_ready_continue(PrintInfo *nfo, PyObj *obj) {
+	if (obj->varname && obj->iter_next) {
+		PyObj *o = r_list_iter_get_data (obj->iter_next);
+		r_return_val_if_fail (o->type == PY_SPLIT, false);
+		if (split_is_resolved (nfo, o)) {
+			return true;
+		}
+	}
+	return false;
 }
 
-static inline bool dump_list(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
-	bool ret = printer_append (nfo, "[");
-	ret &= dump_iter (nfo, obj);
-	ret &= printer_append (nfo, "]");
-	ret &= newline(nfo, obj);
-	return ret;
-}
-
-static inline bool dump_set(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
-	bool ret = printer_append (nfo, "set(");
-	ret &= dump_iter (nfo, obj);
-	ret &= printer_append (nfo, ")");
-	ret &= newline(nfo, obj);
-	return ret;
-}
-
-static inline bool dump_frozen_set(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
-	bool ret = printer_append (nfo, "frozenset(");
-	ret &= dump_iter (nfo, obj);
-	ret &= printer_append (nfo, ")");
-	ret &= newline(nfo, obj);
-	return ret;
-}
-
-static inline bool dump_iter_dict(PrintInfo *nfo, PyObj *obj_iter) {
+static inline bool dump_dict(PrintInfo *nfo, PyObj *obj_iter) {
+	if (!printer_append (nfo, "{")) {
+		return false;
+	}
 	// recursees, so save and modify nfo state
-	bool nfofirst = nfo->first;
-	bool nforet = nfo->ret;
-	nfo->first = false;
-	nfo->ret = false;
+	PrState *ps = printer_push_state (nfo, false);
+	ps->first = false;
+	ps->ret = false;
+
+	if (!obj_iter->iter_next) {
+		obj_iter->iter_next = r_list_head (obj_iter->py_iter);
+	}
 
 	bool tabbed = false;
-	if (r_list_length (obj_iter->py_iter) > 2) {
+	if (iter_multi_line (nfo, obj_iter->iter_next, 6)) {
 		tabbed = true;
-		nfo->tabs++;
+		ps->tabs++;
 	}
 
 	bool onkey = true;
 	bool ret = true;
-	PyObj *obj;
-	RListIter *iter;
-	r_list_foreach (obj_iter->py_iter, iter, obj) {
-		if (tabbed && onkey) {
-			ret &= print_tabs (nfo);
+	if (!split_stop (nfo, obj_iter)) {
+		while (obj_iter->iter_next) {
+			PyObj *obj = r_list_iter_get_data (obj_iter->iter_next);
+			if (tabbed && onkey) {
+				ret &= print_tabs (nfo);
+			}
+
+			ret &= dump_obj (nfo, obj);
+			if (!ret) {
+				break;
+			}
+
+			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
+			if (split_stop (nfo, obj_iter)) {
+				break;
+			}
+
+			if (onkey) {
+				ret &= printer_append (nfo, ": ");
+			} else {
+				ret &= printer_append (nfo, ", ");
+			}
+			onkey = !onkey;
 		}
-		ret &= dump_obj (nfo, obj);
-		if (!ret) {
-			break;
-		}
-		if (onkey) {
-			ret &= printer_append (nfo, ": ");
-		} else if (iter != r_list_tail (obj_iter->py_iter)) {
-			ret &= printer_append (nfo, ", ");
-		}
-		onkey = !onkey;
 	}
+	printer_pop_state (nfo);
+
 	if (tabbed) {
-		nfo->tabs--;
 		ret &= print_tabs (nfo);
 	}
-	nfo->first = nfofirst;
-	nfo->ret = nforet;
-	return ret;
+	return ret && printer_append (nfo, "}");
 }
 
-static inline bool dump_dict(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
-	bool ret = printer_append (nfo, "{");
-	ret &= dump_iter_dict (nfo, obj);
-	ret &= printer_append (nfo, "}");
-	ret &= newline(nfo, obj);
-	return ret;
+static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
+	PrState *ps = NULL;
+	bool ret = true;
+	if (iter_ready_continue (nfo, obj)) {
+		// partially printed, we have to finish it
+		ps = r_list_last (nfo->outstack);
+		if (ps->ret) {
+			ps->first = false;
+			ret &= printer_append (nfo, "return ");
+		}
+		if (!ret || !printer_push_state (nfo, true)) {
+			return false;
+		}
+
+		ret = PCOLORSTR (obj->varname, func_var);
+
+		switch (obj->type) {
+		case PY_LIST:
+			ret &= printer_appendf (nfo, ".extend(");
+			break;
+		case PY_SET:
+		case PY_FROZEN_SET:
+			ret &= printer_append (nfo, ".update(");
+			break;
+		case PY_DICT:
+			ret &= printer_append (nfo, " |= ");
+			break;
+		default:
+			r_warn_if_reached ();
+			ret = false;
+		}
+	} else {
+		PREPRINT (nfo, obj);
+	}
+	if (ret) {
+		if (obj->type == PY_DICT) {
+			ret = dump_dict (nfo, obj);
+		} else {
+			ret = dump_iter_loop (nfo, obj);
+		}
+	}
+
+	if (ps) {
+		if (obj->type != PY_DICT) {
+			ret = ret && printer_append (nfo, ")");
+		}
+		ret = ret && newline (nfo);
+		ret = ret && printer_pop_state (nfo);
+		ret = ret && PCOLORSTR (obj->varname, func_var);
+	}
+	return ret && newline (nfo);
 }
+
 
 static inline bool dump_func(PrintInfo *nfo, PyObj *obj) {
-	PREPRINT ();
+	PREPRINT (nfo, obj);
 	bool ret =  printer_append (nfo, "_find_class(");
-	bool first = nfo->first;
-	nfo->first = false;
-	bool retsave = nfo->ret;
-	nfo->ret = false;
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
 	ret &= dump_obj (nfo, obj->py_func.module);
 	ret &= printer_append (nfo, ", ");
 	ret &= dump_obj (nfo, obj->py_func.name);
-	nfo->first = first;
+
+	printer_pop_state (nfo);
 	ret &= printer_append (nfo, ")");
-	ret &= newline(nfo, obj);
-	nfo->ret = retsave;
+	ret &= newline (nfo);
 	return ret;
 }
 
@@ -350,13 +519,16 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 
 static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	// TODO: comment in output a distinction between INST and REDUCE, they are slightly different
+	r_return_val_if_fail (pop->op != OP_INST, false);
 	PyObj *args = r_list_last (pop->stack);
-	return args
+	bool ret = args
 		&& PCOLORSTR (vn, func_var)
 		&& printer_appendf (nfo, " = ")
 		&& PCOLORSTR (vn, func_var)
 		&& printer_append (nfo, "(*")
 		&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
+	pop->reduce.resolved = nfo->recurse;
+	return ret;
 }
 
 static inline bool dump_oper_newobj(PrintInfo *nfo, PyOper *pop, const char *vn) {
@@ -453,7 +625,7 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 }
 
 static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
-	if (!nfo->first) {
+	if (!PSTATE (nfo, first)) {
 		if (obj->varname) {
 			return printer_appendf (nfo, "%s%s%s", PALCOLOR (func_var), obj->varname, PALCOLOR (reset));
 		}
@@ -462,7 +634,7 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 
 	// obj is start of a line
 	if (obj->varname) {
-		if (nfo->ret) {
+		if (PSTATE (nfo, ret)) {
 			return printer_appendf (nfo, "return %s%s%s\n", PALCOLOR (func_var), obj->varname, PALCOLOR (reset));
 		} else {
 			return true; // already init previously
@@ -473,9 +645,12 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 	if (!obj_varname (nfo, obj)) { // populate obj->varname
 		return false;
 	}
-	bool saveret = nfo->ret;
-	nfo->ret = false;
-	nfo->first = false;
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->ret = false;
+	ps->first = false;
 
 	PyOper *pop;
 	RListIter *iter;
@@ -484,13 +659,14 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *obj) {
 			return false;
 		}
 	}
-	nfo->ret = saveret;
-	nfo->first = true;
-	return nfo->ret? dump_what (nfo, obj): true;
+	printer_pop_state (nfo);
+	ps = r_list_last (nfo->outstack);
+	ps->first = true;
+	return ps->ret? dump_what (nfo, obj): true;
 }
 
 bool dump_obj(PrintInfo *nfo, PyObj *obj) {
-	if (!nfo->first && obj->refcnt) {
+	if (!PSTATE (nfo, first) && obj->refcnt) {
 		return prepend_obj (nfo, obj);
 	}
 
@@ -506,15 +682,13 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	case PY_NONE:
 		return dump_none (nfo, obj);
 	case PY_TUPLE:
-		return dump_tuple (nfo, obj);
+		PREPRINT (nfo, obj);
+		return dump_iter_loop (nfo, obj) && newline (nfo);
 	case PY_LIST:
-		return dump_list (nfo, obj);
 	case PY_SET:
-		return dump_set (nfo, obj);
 	case PY_FROZEN_SET:
-		return dump_frozen_set (nfo, obj);
 	case PY_DICT:
-		return dump_dict (nfo, obj);
+		return dump_iter (nfo, obj);
 	case PY_FUNC:
 		return dump_func (nfo, obj);
 	case PY_WHAT:
@@ -534,14 +708,16 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 	RListIter *iter;
 	PyObj *obj;
 	printer_appendf (nfo, "%s## %s stack start, len %d%s\n", PALCOLOR (usercomment), n, len, PALCOLOR (reset));
+	PrState *ps = r_list_last (nfo->outstack);
+	r_return_val_if_fail (ps, false);
 	r_list_foreach (stack, iter, obj) {
 		len--;
 		printer_appendf (nfo, "%s## %s[%d] %s%s\n", PALCOLOR (usercomment), n, len, len == 0? "TOP": "", PALCOLOR (reset));
 		printer_drain (nfo);
 
-		nfo->first = true;
+		ps->first = true;
 		if (!len && !strcmp (n, "VM")) {
-			nfo->ret = true;
+			ps->ret = true;
 		}
 		if (!dump_obj (nfo, obj)) {
 			return false;
@@ -553,13 +729,13 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 
 bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 	bool ret = true;
-	if (nfo->popstack && r_list_length (pvm->popstack)) {
-		ret &= dump_stack (nfo, pvm->popstack, "POP");
-	}
 	if (nfo->stack) {
 		ret &= dump_stack (nfo, pvm->stack, "VM");
 	}
-	printer_drain_free (nfo);
+	if (nfo->popstack && r_list_length (pvm->popstack)) {
+		ret &= dump_stack (nfo, pvm->popstack, "POP");
+	}
+	printer_pop_state (nfo);
 	if (!ret || warn) {
 		r_cons_print ("Raise Exception('INCOMPLETE!!! Pickle did not completely extract, check error log')\n");
 	}
@@ -568,21 +744,23 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 
 void print_info_clean(PrintInfo *nfo) {
 	r_list_free (nfo->outstack);
-	r_strbuf_free (nfo->out);
 	memset (nfo, 0, sizeof (*nfo));
 }
 
-bool print_info_init(PrintInfo *nfo, RCore *core) {
+bool print_info_init(PrintInfo *nfo, ut64 recurse, RCore *core) {
 	memset (nfo, 0, sizeof (*nfo));
 	nfo->stack = true;
 	nfo->popstack = true;
 	if (core && core->cons && core->cons->context) {
 		if (r_config_get_b (core->config, "scr.color")) {
-			if (r_cons_is_tty() || r_config_get_b (core->config, "scr.color.pipe")) {
+			if (r_cons_is_tty () || r_config_get_b (core->config, "scr.color.pipe")) {
 				nfo->pal = &core->cons->context->pal;
 			}
 		}
 	}
-	nfo->outstack = r_list_newf ((RListFree)r_strbuf_free);
+	nfo->recurse = recurse;
+	nfo->reduce_off = UT64_MAX;
+	nfo->outstack = r_list_newf ((RListFree) pstate_free);
+	printer_push_state (nfo, false); // init print state
 	return nfo->outstack? true: false;
 }

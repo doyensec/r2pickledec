@@ -12,8 +12,7 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_INT","value":42},{"offset":4,"type":"PY_INT","value":43}],"popstack":[]}'
-    },
-    {
+    }, {
        "name" : "pop",
        "asm" : """
             proto 2
@@ -403,6 +402,49 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":14,"type":"PY_FUNC","value":{"module":{"offset":2,"type":"PY_STR","value":"system"},"name":{"offset":10,"type":"PY_STR","value":"os"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":15,"type":"PY_STR","value":"whoami"}]}]}]}],"popstack":[]}'
+    }, {
+       "name" : "split nested lists",
+       "asm" : """
+            empty_list
+            empty_list
+            memoize
+            append
+            memoize
+
+            global "builtins print"
+            binget 1
+            tuple1
+            reduce
+
+            binget 0
+            binint 42
+            append
+
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_LIST","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}},{"offset":27,"type":"PY_INT","value":42}]}]},{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":5,"type":"PY_FUNC","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}]},{"offset":1,"type":"PY_LIST","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
+    }, {
+       "name" : "split dicts",
+       "asm" : """
+            empty_list
+            empty_dict
+            memoize
+            append
+            memoize
+
+            global "builtins print"
+            binget 1
+            tuple1
+            reduce
+
+            binget 0
+            binint 42
+            binint 43
+            setitem
+
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_DICT","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}},[{"offset":27,"type":"PY_INT","value":42},{"offset":32,"type":"PY_INT","value":43}]]}]},{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":5,"type":"PY_FUNC","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}]},{"offset":1,"type":"PY_DICT","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
     }
 ]
 

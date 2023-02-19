@@ -44,6 +44,9 @@ static inline bool pj_list(PJ *pj, RList *l, RList *path) {
 	RListIter *iter;
 	if (pj_a (pj)) {
 		r_list_foreach (l, iter, obj) {
+			if (obj->type == PY_SPLIT && !r_list_iter_get_next (iter)) {
+				break;
+			}
 			if (
 				!path_push (path, r_str_newf ("[%u]", i++))
 				|| !py_obj (pj, obj, path)
@@ -97,12 +100,23 @@ static inline bool pj_py_dict(PJ *pj, RList *l, RList *path) {
 	if (pj_a (pj)) {
 		ut32 i = 0;
 		r_list_foreach (l, iter, obj) {
-			if (i % 2 == 0) {
+			if (obj->type == PY_SPLIT) {
+				if (!r_list_iter_get_next (iter)) {
+					break;
+				}
+				if (!py_obj (pj, obj, path)) {
+					return false;
+				}
+				i += 2; // treat split as 2 things, to keep rest of logic correct
+				continue;
+			}
+
+			if (i % 2 == 0) { // outer index
 			  if (!path_push (path, r_str_newf ("[%d]", i / 2)) || !pj_a (pj)) {
 					return false;
 				}
 			}
-			if (
+			if ( // inneer index
 				!path_push (path, r_str_newf ("[%d]", i % 2 == 0? 0: 1))
 				|| !py_obj (pj, obj, path)
 				|| !path_pop (path)
@@ -120,7 +134,6 @@ static inline bool pj_py_dict(PJ *pj, RList *l, RList *path) {
 	}
 	return false;
 }
-
 
 static inline bool pj_pyop(PJ *pj, PyOper *pop, RList *path) {
 	if (
@@ -193,6 +206,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 		break;
 	case PY_STR:
 		ret &= pj_s (pj, obj->py_str)? true: false;
+		break;
+	case PY_SPLIT:
+		ret &= pj_pyop (pj, obj->reduce, path);
 		break;
 	case PY_FROZEN_SET:
 	case PY_SET:

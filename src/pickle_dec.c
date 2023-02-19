@@ -14,12 +14,19 @@ static const char *help_msg[] = {
 	NULL
 };
 
+static void pyop_free(PyOper *pop);
+
 // Free stuff
 static void py_obj_free(PyObj *obj) {
 	if (obj && obj->refcnt-- <= 0) {
 		free (obj->varname);
 		R_LOG_DEBUG ("Obj fully free: %p", obj);
 		switch (obj->type) {
+		case PY_BOOL:
+		case PY_INT:
+		case PY_FLOAT:
+		case PY_NONE:
+			break;
 		case PY_STR:
 			free ((void *)obj->py_str);
 			break;
@@ -30,11 +37,8 @@ static void py_obj_free(PyObj *obj) {
 		case PY_TUPLE:
 			r_list_free (obj->py_iter);
 			break;
-		case PY_BOOL:
-		case PY_INT:
-		case PY_FLOAT:
-		case PY_NONE:
-			break;
+		case PY_SPLIT:
+			pyop_free (obj->reduce);
 		case PY_FUNC:
 			py_obj_free (obj->py_func.module);
 			py_obj_free (obj->py_func.name);
@@ -113,16 +117,28 @@ static inline PyObj *obj_stack_peek(RList *stack, bool dup) {
 	return NULL;
 }
 
-
 // PyWhat helpers
 static void pyop_free(PyOper *pop) {
 	if (pop) {
-		r_list_free (pop->stack);
+		switch (pop->op) {
+		case OP_REDUCE:
+			if (pop->reduce.refcnt) {
+				pop->reduce.refcnt--;
+				return;
+			}
+			break;
+		case OP_FAKE_SPLIT:
+			pyop_free (pop->split);
+			break;
+		default:
+			r_list_free (pop->stack);
+			break;
+		}
 		free (pop);
 	}
 }
 
-static inline PyOper *py_op_new(PMState *pvm, PyOp op, bool initlist) {
+static inline PyOper *py_oper_new(PMState *pvm, PyOp op, bool initlist) {
 	PyOper *pop = R_NEW0 (PyOper);
 	if (pop) {
 		pop->offset = pvm->offset;
@@ -138,7 +154,7 @@ static inline PyOper *py_op_new(PMState *pvm, PyOp op, bool initlist) {
 
 static inline PyObj *py_what_new(PMState *pvm, PyObj *obj) {
 	PyObj *wat = py_obj_new (pvm, PY_WHAT);
-	PyOper *pop = py_op_new (pvm, OP_FAKE_INIT, true);
+	PyOper *pop = py_oper_new (pvm, OP_FAKE_INIT, true);
 
 	if (wat && pop) {
 		wat->py_what = r_list_newf ((RListFree)pyop_free);
@@ -179,7 +195,7 @@ static inline PyObj *stack_top_to_what(PMState *pvm, RList *stack) {
 static inline bool py_what_addop_stack(PMState *pvm, PyOp op) {
 	if (r_list_length (pvm->metastack) > 0) {
 		RList *oldstack = r_list_pop (pvm->metastack);
-		PyOper *pop = py_op_new (pvm, op, false);
+		PyOper *pop = py_oper_new (pvm, op, false);
 		if (oldstack && pop) {
 			PyObj *obj = stack_top_to_what(pvm, oldstack);
 			if (obj && r_list_push (obj->py_what, pop)) {
@@ -206,16 +222,114 @@ static inline RList *list_pop_n(RList *list, int n) {
 	return NULL;
 }
 
+static inline bool what_add_split(PMState *pvm, RList *list, PyOper *pop) {
+	PyOper *split = py_oper_new (pvm, OP_FAKE_SPLIT, false);
+	if (split) {
+		if (r_list_append (list, split)) {
+			split->split = pop;
+			pop->reduce.refcnt++;
+			return true;
+		}
+		pyop_free (split);
+	}
+	return false;
+}
+
+static inline bool itter_add_split(PMState *pvm, RList *list, PyOper *pop) {
+	PyObj *split = py_obj_new (pvm, PY_SPLIT);
+	if (split) {
+		if (r_list_append (list, split)) {
+			split->reduce = pop;
+			pop->reduce.refcnt++;
+			return true;
+		}
+		py_obj_free (split);
+	}
+	return false;
+}
+
+static bool add_splits(PMState *pvm, PyObj *obj, PyOper *pop);
+
+static inline bool split_iter_recures(PMState *pvm, RList *list, PyOper *pop) {
+	RListIter *iter;
+	PyObj *obj;
+	r_list_foreach (list, iter, obj) {
+		if (!add_splits (pvm, obj, pop)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static inline bool split_what_recures(PMState *pvm, RList *list, PyOper *rpop) {
+	RListIter *iter, *iteriter;
+	PyOper *pop;
+	r_list_foreach (list, iter, pop) {
+		PyObj *obj;
+		r_list_foreach (pop->stack, iteriter, obj) {
+			if (!add_splits (pvm, obj, rpop)) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static bool add_splits(PMState *pvm, PyObj *obj, PyOper *pop) {
+	// skip previously seen (python allows `a.append(a)`)
+	if (obj->recurse == pvm->recurse) {
+		return true;
+	}
+	obj->recurse = pvm->recurse;
+
+	switch (obj->type) {
+	case PY_NOT_RIGHT:
+	case PY_INT:
+	case PY_STR:
+	case PY_BOOL:
+	case PY_NONE:
+	case PY_FLOAT:
+	case PY_FUNC:
+	case PY_SPLIT:
+		return true;
+	case PY_LIST:
+	case PY_FROZEN_SET:
+	case PY_SET:
+	case PY_DICT:
+	case PY_TUPLE: // attempting to modify will result in PY_WHAT, so only recurse
+		if (!split_iter_recures (pvm, obj->py_iter, pop)) {
+			return false;
+		}
+		return obj->type == PY_TUPLE || itter_add_split (pvm, obj->py_iter, pop);
+		break;
+	case PY_WHAT:
+		return split_what_recures (pvm, obj->py_what, pop)
+			&& what_add_split (pvm, obj->py_what, pop);
+	default:
+		r_warn_if_reached ();
+		return false;
+	}
+}
+
+static inline bool split_reduce(PMState *pvm, PyOper *pop) {
+	PyObj *obj = r_list_last (pop->stack); // likely a TUPLE
+	pvm->recurse++;
+	return add_splits (pvm, obj, pop);
+}
+
 static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 	r_return_val_if_fail (argc > 0, false);
 
-	PyOper *pop = py_op_new (pvm, op, false);
+	PyOper *pop = py_oper_new (pvm, op, false);
 	RList *args = list_pop_n (pvm->stack, argc);
-	PyObj *obj = stack_top_to_what(pvm, pvm->stack);
+	PyObj *obj = stack_top_to_what (pvm, pvm->stack);
 
 	if (pop && args && obj) {
 		if (r_list_append (obj->py_what, pop)) {
 			pop->stack = args;
+			if (op == OP_REDUCE) {
+				return split_reduce (pvm, pop);
+			}
 			return true;
 		}
 	}
@@ -714,9 +828,9 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_global (pvm, op);
 	case OP_STACK_GLOBAL:
 		return op_stack_global (pvm, op);
-	case OP_REDUCE:
 	case OP_NEWOBJ:
 	case OP_BUILD:
+	case OP_REDUCE:
 		return py_what_addop (pvm, 1, code);
 	// tuple's
 	case OP_TUPLE:
@@ -887,7 +1001,8 @@ static int pickle_dec(void *user, const char *input) {
 			dump_json(c, &state);
 		} else {
 			PrintInfo nfo;
-			if (!print_info_init (&nfo, c) || !dump_machine(&state, &nfo, !pvm_fin)) {
+			state.recurse++;
+			if (!print_info_init (&nfo, state.recurse, c) || !dump_machine(&state, &nfo, !pvm_fin)) {
 				R_LOG_ERROR ("Failed to dump pickle");
 			}
 			print_info_clean (&nfo);

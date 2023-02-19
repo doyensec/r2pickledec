@@ -82,11 +82,14 @@ typedef enum opcode {
 	OP_NEXT_BUFFER = '\x97',
 	OP_READONLY_BUFFER = '\x98',
 
-	OP_FAKE_INIT // not a real opcode, just used to make code simpler
+	// META OPCODES... not real, used to make code eaiser
+	OP_FAKE_INIT,
+	OP_FAKE_SPLIT
 } PyOp;
 
 typedef enum python_type {
 	PY_NOT_RIGHT = 0, // initial invalid type
+	PY_SPLIT, // meta, used to split items into before and after reduce
 	PY_WHAT, // don't know what it is, just accept operations on it
 	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_FUNC,
 	PY_TUPLE, PY_LIST, PY_DICT, PY_SET, PY_FROZEN_SET // iters
@@ -97,6 +100,7 @@ typedef enum python_type {
 typedef struct pickle_machine_state {
 	RList *stack, *metastack, *popstack;
 	HtUP *memo;
+	ut64 recurse;
 	bool break_on_stop;
 	ut64 start, offset, end;
 	bool verbose;
@@ -110,25 +114,38 @@ typedef struct python_func {
 	PyObj *name;
 } PyFunc;
 
+typedef struct py_oper_reduce {
+	ut64 resolved; // populated by recures token during output
+	int refcnt;
+} OpReduce;
+
 // things you can do to a python object of unkonwn type
-typedef struct python_operator {
+typedef struct python_operator PyOper;
+struct python_operator {
 	PyOp op;
 	ut64 offset;
+	union {
+		PyOper *split; 		// OP_FAKE_SPLIT only
+		OpReduce reduce;	// OP_REDUCE only
+	};
 	RList /*PyObj**/*stack;
-} PyOper;
+};
 
 struct python_object {
 	int refcnt;
 	PyType type;
 	ut64 offset;
 	ut64 memo_id;
+	ut64 recurse; // token to prevent infinit recursion
 	char *varname; // used by printer
+	RListIter *iter_next;
 	union {
 		bool py_bool;
 		st32 py_int;
 		double py_float;
 		const char *py_str;
 		double py_double;
+		PyOper *reduce; // points to REDUCE oper that split iter
 		PyFunc py_func;
 		RList /*PyObj**/*py_iter; // tuple, list, etc...
 		RList /*PyOper**/*py_what; // this object has transcended beyond our
