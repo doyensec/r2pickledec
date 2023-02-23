@@ -84,7 +84,6 @@ typedef enum opcode {
 
 	// META OPCODES... not real, used to make code eaiser
 	OP_FAKE_INIT,
-	OP_FAKE_SPLIT
 } PyOp;
 
 typedef enum python_type {
@@ -114,20 +113,13 @@ typedef struct python_func {
 	PyObj *name;
 } PyFunc;
 
-typedef struct py_oper_reduce {
-	ut64 resolved; // populated by recures token during output
-	int refcnt;
-} OpReduce;
-
 // things you can do to a python object of unkonwn type
 typedef struct python_operator PyOper;
 struct python_operator {
 	PyOp op;
 	ut64 offset;
-	union {
-		PyOper *split; 		// OP_FAKE_SPLIT only
-		OpReduce reduce;	// OP_REDUCE only
-	};
+	ut64 resolved; // populated by recures token during output
+	int refcnt;
 	RList /*PyObj**/*stack;
 };
 

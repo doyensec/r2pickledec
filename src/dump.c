@@ -162,7 +162,7 @@ static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 	r_return_val_if_fail (split->type == PY_SPLIT, true);
 	PyOper *pop = split->reduce;
 	r_return_val_if_fail (pop->op == OP_REDUCE, true);
-	return pop->reduce.resolved == nfo->recurse;
+	return pop->resolved == nfo->recurse;
 }
 
 // 0 ok, >0 printed var instead of obj (ie caller is done), <0 error
@@ -527,7 +527,7 @@ static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, const char *vn)
 		&& PCOLORSTR (vn, func_var)
 		&& printer_append (nfo, "(*")
 		&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
-	pop->reduce.resolved = nfo->recurse;
+	pop->resolved = nfo->recurse;
 	return ret;
 }
 
