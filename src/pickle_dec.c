@@ -7,6 +7,8 @@
 
 #define TAB "\t"
 
+static void py_obj_free_internal(PyObj *obj, bool deep);
+
 static const char *help_msg[] = {
 	"Usage:", "pdP[j]", "Decompile python pickle",
 	"pdP", "", "Decompile python pickle until STOP, eof or bad opcode",
@@ -14,57 +16,153 @@ static const char *help_msg[] = {
 	NULL
 };
 
-static void pyop_free(PyOper *pop);
+static inline void list_free_with(RList *l, RListFree f) {
+	if (l) {
+		l->free = f;
+		r_list_free (l);
+	}
+}
 
-// Free stuff
+/*
+ * Note about free usage:
+ * Typically one would check an objects reference count before free'ing any
+ * part of an object. This is how `py_obj_free` and `pyop_free` operate.
+ *
+ * Consider though the following pickle:
+ * ```
+ * empty_list
+ * dup
+ * append
+ * stop
+ * ```
+ * This creates the valid python object `[[...]]`, a list containing itself.
+ * Such an element will have two references to it. One from the stack, one from
+ * itself. So free'ing the object off the stack with py_obj_free would
+ * decrement the refcount only once, and result in a leak. Checking for self
+ * reference would require another round of recursion and slow things down.
+ *
+ * Functions pyop_deep_free and py_obj_deep_free will free all of an objects
+ * internal pointers first. Then the reference count is decremented and checked
+ * to see if the outer object should be free'd. This won't leak, even for
+ * elements that self reference. Ensuring all pointers of an object are NULL'd
+ * before free'ing the pointer itself, will prevent double-free's.
+ *
+ * Why both? A legitimate pickle can have a lot of memos. These are free'd with
+ * py_obj_free BEFORE processing the AST into json or pseudocode. If you used
+ * deep free, to free the memos, it would corrupt the AST. You can't leak by
+ * using py_obj_free because an object that is referenced by the memo, must
+ * also be referenced by one of the stacks. So doing a deep free on the stacks
+ * will ensure there are no leaks.
+ */
+
 static void py_obj_free(PyObj *obj) {
 	if (obj && obj->refcnt-- <= 0) {
-		free (obj->varname);
-		R_LOG_DEBUG ("Obj fully free: %p", obj);
-		switch (obj->type) {
-		case PY_BOOL:
-		case PY_INT:
-		case PY_FLOAT:
-		case PY_NONE:
-			break;
-		case PY_STR:
-			free ((void *)obj->py_str);
-			break;
-		case PY_SET:
-		case PY_FROZEN_SET:
-		case PY_DICT:
-		case PY_LIST:
-		case PY_TUPLE:
-			r_list_free (obj->py_iter);
-			break;
-		case PY_SPLIT:
-			pyop_free (obj->reduce);
-			break;
-		case PY_FUNC:
-			py_obj_free (obj->py_func.module);
-			py_obj_free (obj->py_func.name);
-			break;
-		case PY_WHAT:
-			r_list_free (obj->py_what);
-			break;
-		default:
-			R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
-			break;
-		}
+		py_obj_free_internal (obj, false);
 		free (obj);
 	}
 }
 
-static inline void empty_memo (PMState *pvm) {
+static void py_obj_deep_free(PyObj *obj) {
+	if (obj) {
+		py_obj_free_internal (obj, true);
+		if (obj->refcnt-- <= 0) {
+			free (obj);
+		}
+	}
+}
+
+static void pyop_free(PyOper *pop) {
+	if (pop && pop->refcnt-- <= 0) {
+		void *tmp = pop->stack;
+		pop->stack = NULL;
+		list_free_with (tmp, (RListFree)py_obj_free);
+		free (pop);
+	}
+}
+
+static void pyop_deep_free(PyOper *pop) {
+	if (pop) {
+		void *tmp = pop->stack;
+		pop->stack = NULL;
+		list_free_with (tmp, (RListFree)py_obj_deep_free);
+		if (pop->refcnt-- <= 0) {
+			free (pop);
+		}
+	}
+}
+
+static void py_obj_free_internal(PyObj *obj, bool deep) {
+	void *tmp;
+	RListFree f = NULL;
+
+	free (obj->varname);
+	obj->varname = NULL;
+	switch (obj->type) {
+	case PY_BOOL:
+	case PY_INT:
+	case PY_FLOAT:
+	case PY_NONE:
+		break;
+	case PY_STR:
+		free ((void *)obj->py_str);
+		obj->py_str = NULL;
+		break;
+	case PY_SET:
+	case PY_FROZEN_SET:
+	case PY_DICT:
+	case PY_LIST:
+	case PY_TUPLE:
+		tmp = obj->py_iter;
+		obj->py_what = NULL;
+		f = deep? (RListFree)py_obj_deep_free: (RListFree)py_obj_free;
+		list_free_with (tmp, f);
+		break;
+	case PY_SPLIT:
+		tmp = obj->reduce;
+		obj->reduce = NULL;
+		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
+		f (tmp);
+		break;
+	case PY_FUNC:
+	{
+		void *tmpa = obj->py_func.module;
+		tmp = obj->py_func.name;
+		obj->py_func.module = NULL;
+		obj->py_func.name = NULL;
+		f = deep? (RListFree)py_obj_deep_free: (RListFree)py_obj_free;
+		f (tmp);
+		f (tmpa);
+		break;
+	}
+	case PY_WHAT:
+		tmp = obj->py_what;
+		obj->py_what = NULL;
+		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
+		list_free_with (tmp, f);
+		break;
+	default:
+		R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
+		break;
+	}
+}
+
+static inline void empty_memo(PMState *pvm) {
 	ht_up_free (pvm->memo);
 	pvm->memo = NULL;
 }
 
+static void metastack_deep_free(RList *l) {
+	list_free_with (l, (RListFree)py_obj_deep_free);
+}
+
 static inline void empty_state(PMState *pvm) {
 	empty_memo (pvm);
-	r_list_free (pvm->stack);
-	r_list_free (pvm->metastack);
-	r_list_free (pvm->popstack);
+	list_free_with (pvm->stack, (RListFree)py_obj_deep_free);
+	pvm->stack = NULL;
+	list_free_with (pvm->metastack, (RListFree)metastack_deep_free);
+	pvm->metastack = NULL;
+	list_free_with (pvm->popstack, (RListFree)py_obj_deep_free);
+	pvm->popstack = NULL;
 }
 
 static void _kv_free(HtUPKv *kv) {
@@ -96,7 +194,6 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 static inline PyObj *py_obj_new(PMState *pvm, PyType type) {
 	PyObj *obj = R_NEW0 (PyObj);
 	if (obj) {
-		R_LOG_DEBUG ("\tObj Alloc %p", obj);
 		obj->type = type;
 		obj->offset = pvm->offset;
 		obj->memo_id = UT64_MAX;
@@ -119,17 +216,6 @@ static inline PyObj *obj_stack_peek(RList *stack, bool dup) {
 }
 
 // PyWhat helpers
-static void pyop_free(PyOper *pop) {
-	if (pop) {
-		if (pop->refcnt) {
-			pop->refcnt--;
-			return;
-		}
-		r_list_free (pop->stack);
-		free (pop);
-	}
-}
-
 static inline PyOper *py_oper_new(PMState *pvm, PyOp op, bool initlist) {
 	PyOper *pop = R_NEW0 (PyOper);
 	if (pop) {
@@ -323,7 +409,8 @@ static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 
 	// cleanup
 	// join might be in wrong order...
-	if (args && !r_list_join (pvm->stack, args)) {
+	if (args) {
+		r_list_join (pvm->stack, args);
 		r_list_free (args);
 	}
 	pyop_free (pop);
@@ -391,6 +478,7 @@ static inline bool py_iter_append_mark(PMState *pvm, PyObj *obj, PyType t) {
 		if (prev_stack) {
 			// current stack (everything since last MARK) shoved into iter
 			r_list_join (obj->py_iter, pvm->stack); // ordering might be wrong...
+			r_list_free (pvm->stack);
 			// stack is then restored to before last MARK
 			pvm->stack = prev_stack;
 			return true;
@@ -654,8 +742,9 @@ static inline bool op_pop(PMState *pvm) {
 }
 
 static inline bool op_pop_mark(PMState *pvm) {
-	if (r_list_length (pvm->metastack)) {
+	if (pvm->metastack && r_list_length (pvm->metastack)) {
 		r_list_join (pvm->popstack, pvm->stack);
+		r_list_free (pvm->stack);
 		pvm->stack = r_list_pop (pvm->metastack);
 		return true;
 	}
@@ -933,6 +1022,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		r_anal_op_init(&op);
 		if (r_anal_op (c->anal, &op, pvm->offset, rbuf, bsize, R_ARCH_OP_MASK_BASIC) <= 0) {
 			R_LOG_ERROR ("Failed to disassemble op at offset: 0x"PFMT64x, pvm->offset);
+			free (buf);
 			return false;
 		}
 		int size = op.size;
@@ -945,6 +1035,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 				R_LOG_ERROR ("Failed to exec unkown opcode 0x%02x at offset: 0x%" PFMT64x, rbuf[0], pvm->offset);
 			}
 			r_anal_op_fini (&op);
+			free (buf);
 			return false;
 		}
 		r_anal_op_fini (&op);
@@ -955,6 +1046,7 @@ static inline bool run_pvm(RCore *c, PMState *pvm) {
 		rbuf += size;
 	}
 	empty_memo (pvm);
+	free (buf);
 	return true;
 }
 
