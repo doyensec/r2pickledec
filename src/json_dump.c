@@ -72,18 +72,18 @@ static inline bool pj_klist(PJ *pj, char *name, RList *l, RList *path) {
 	return false;
 }
 
-static inline bool py_func(PJ *pj, PyObj *obj, RList *path) {
+static inline bool py_glob(PJ *pj, PyObj *obj, RList *path) {
 	if (
 		pj_o (pj)
 
 		&& path_push (path, strdup(".module"))
 		&& pj_k (pj, "module")
-		&& py_obj (pj, obj->py_func.module, path)
+		&& py_obj (pj, obj->py_glob.module, path)
 		&& path_pop (path)
 
 		&& path_push (path, strdup(".name"))
 		&& pj_k (pj, "name")
-		&& py_obj (pj, obj->py_func.name, path)
+		&& py_obj (pj, obj->py_glob.name, path)
 		&& path_pop (path)
 
 		&& pj_end (pj)
@@ -201,8 +201,8 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_BOOL:
 		ret &= pj_b (pj, obj->py_bool)? true: false;
 		break;
-	case PY_FUNC:
-		ret &= py_func (pj, obj, path);
+	case PY_GLOB:
+		ret &= py_glob (pj, obj, path);
 		break;
 	case PY_STR:
 		ret &= pj_s (pj, obj->py_str)? true: false;

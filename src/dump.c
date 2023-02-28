@@ -492,7 +492,7 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
 }
 
 
-static inline bool dump_func(PrintInfo *nfo, PyObj *obj) {
+static inline bool dump_glob(PrintInfo *nfo, PyObj *obj) {
 	PREPRINT (nfo, obj);
 	bool ret =  printer_append (nfo, "_find_class(");
 	PrState *ps = printer_push_state (nfo, false);
@@ -501,9 +501,9 @@ static inline bool dump_func(PrintInfo *nfo, PyObj *obj) {
 	}
 	ps->first = false;
 	ps->ret = false;
-	ret &= dump_obj (nfo, obj->py_func.module);
+	ret &= dump_obj (nfo, obj->py_glob.module);
 	ret &= printer_append (nfo, ", ");
-	ret &= dump_obj (nfo, obj->py_func.name);
+	ret &= dump_obj (nfo, obj->py_glob.name);
 
 	printer_pop_state (nfo);
 	ret &= printer_append (nfo, ")");
@@ -691,8 +691,8 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	case PY_FROZEN_SET:
 	case PY_DICT:
 		return dump_iter (nfo, obj);
-	case PY_FUNC:
-		return dump_func (nfo, obj);
+	case PY_GLOB:
+		return dump_glob (nfo, obj);
 	case PY_WHAT:
 		return dump_what (nfo, obj);
 	default:

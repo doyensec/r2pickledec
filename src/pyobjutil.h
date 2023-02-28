@@ -90,7 +90,7 @@ typedef enum python_type {
 	PY_NOT_RIGHT = 0, // initial invalid type
 	PY_SPLIT, // meta, used to split items into before and after reduce
 	PY_WHAT, // don't know what it is, just accept operations on it
-	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_FUNC,
+	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_GLOB,
 	PY_TUPLE, PY_LIST, PY_DICT, PY_SET, PY_FROZEN_SET // iters
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
 	// pairs. No overwrites happen, to preserve data that might of been lost
@@ -108,10 +108,10 @@ typedef struct pickle_machine_state {
 
 typedef struct python_object PyObj;
 
-typedef struct python_func {
+typedef struct python_glob {
 	PyObj *module;
 	PyObj *name;
-} PyFunc;
+} PyGlob;
 
 // things you can do to a python object of unkonwn type
 typedef struct python_operator PyOper;
@@ -138,7 +138,7 @@ struct python_object {
 		const char *py_str;
 		double py_double;
 		PyOper *reduce; // points to REDUCE oper that split iter
-		PyFunc py_func;
+		PyGlob py_glob;
 		RList /*PyObj**/*py_iter; // tuple, list, etc...
 		RList /*PyOper**/*py_what; // this object has transcended beyond our
 								   // understanding, just go with it

@@ -123,12 +123,12 @@ static void py_obj_free_internal(PyObj *obj, bool deep) {
 		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
 		f (tmp);
 		break;
-	case PY_FUNC:
+	case PY_GLOB:
 	{
-		void *tmpa = obj->py_func.module;
-		tmp = obj->py_func.name;
-		obj->py_func.module = NULL;
-		obj->py_func.name = NULL;
+		void *tmpa = obj->py_glob.module;
+		tmp = obj->py_glob.name;
+		obj->py_glob.module = NULL;
+		obj->py_glob.name = NULL;
 		f = deep? (RListFree)py_obj_deep_free: (RListFree)py_obj_free;
 		f (tmp);
 		f (tmpa);
@@ -355,7 +355,7 @@ static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
 	case PY_BOOL:
 	case PY_NONE:
 	case PY_FLOAT:
-	case PY_FUNC:
+	case PY_GLOB:
 	case PY_SPLIT:
 		return true;
 	case PY_LIST:
@@ -763,7 +763,7 @@ static inline PyObj *str_to_pystr(PMState *pvm, const char *str) {
 	return false;
 }
 
-static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyFunc *cl) {
+static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyGlob *cl) {
 	char *str = op_str_arg (op);
 	if (str) {
 		int len = r_str_split (str, ' ');
@@ -780,8 +780,8 @@ static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyFunc *cl) {
 }
 
 static inline PyObj *glob_obj(PMState *pvm, RAnalOp *op) {
-	PyObj *obj = py_obj_new (pvm, PY_FUNC);
-	if (obj && split_module_str (pvm, op, &obj->py_func)) {
+	PyObj *obj = py_obj_new (pvm, PY_GLOB);
+	if (obj && split_module_str (pvm, op, &obj->py_glob)) {
 		return obj;
 	}
 	py_obj_free (obj);
@@ -798,9 +798,9 @@ static inline bool op_global(PMState *pvm, RAnalOp *op) {
 
 static inline bool op_stack_global(PMState *pvm, RAnalOp *op) {
 	if (r_list_length (pvm->stack) >= 2) {
-		PyObj *obj = py_obj_new (pvm, PY_FUNC);
+		PyObj *obj = py_obj_new (pvm, PY_GLOB);
 		if (obj) {
-			PyFunc *func = &obj->py_func;
+			PyGlob *func = &obj->py_glob;
 			func->name = r_list_pop (pvm->stack);
 			func->module = r_list_pop (pvm->stack);
 			if (func->name && func->module && r_list_push (pvm->stack, obj)) {

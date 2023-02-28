@@ -13,8 +13,8 @@ const char *py_type_to_name(PyType t) {
 		return "PY_FLOAT";
 	case PY_STR:
 		return "PY_STR";
-	case PY_FUNC:
-		return "PY_FUNC";
+	case PY_GLOB:
+		return "PY_GLOB";
 	case PY_TUPLE:
 		return "PY_TUPLE";
 	case PY_LIST:
@@ -79,7 +79,7 @@ bool pytype_has_depth(PyType t) {
 	case PY_BOOL:
 	case PY_NONE:
 	case PY_FLOAT:
-	case PY_FUNC:
+	case PY_GLOB:
 		return false;
 	case PY_TUPLE:
 	case PY_LIST:
