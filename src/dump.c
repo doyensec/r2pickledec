@@ -484,9 +484,11 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
 		}
 		ret = ret && newline (nfo);
 		ret = ret && printer_pop_state (nfo);
-		ret = ret && PCOLORSTR (obj->varname, func_var);
+		PREPRINT (nfo, obj);
+	} else {
+		ret &= newline (nfo);
 	}
-	return ret && newline (nfo);
+	return ret;
 }
 
 
