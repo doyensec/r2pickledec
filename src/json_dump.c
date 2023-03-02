@@ -208,7 +208,7 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 		ret &= pj_s (pj, obj->py_str)? true: false;
 		break;
 	case PY_SPLIT:
-		ret &= pj_pyop (pj, obj->reduce, path);
+		ret &= pj_pyop (pj, obj->split, path);
 		break;
 	case PY_FROZEN_SET:
 	case PY_SET:

@@ -118,8 +118,8 @@ static void py_obj_free_internal(PyObj *obj, bool deep) {
 		list_free_with (tmp, f);
 		break;
 	case PY_SPLIT:
-		tmp = obj->reduce;
-		obj->reduce = NULL;
+		tmp = obj->split;
+		obj->split = NULL;
 		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
 		f (tmp);
 		break;
@@ -380,7 +380,7 @@ static inline bool split_reduce(PMState *pvm, PyOper *pop) {
 	PyObj *split = py_obj_new (pvm, PY_SPLIT);
 	PyObj *obj = r_list_last (pop->stack); // likely a TUPLE
 	if (obj && split) {
-		split->reduce = pop;
+		split->split = pop;
 		pop->refcnt++;
 		pvm->recurse++;
 		bool ret = add_splits (pvm, obj, split);
@@ -813,6 +813,9 @@ static inline bool op_stack_global(PMState *pvm, RAnalOp *op) {
 }
 
 static inline bool insantiate(PMState *pvm, RAnalOp *op, PyObj *cls, PyObj *args) {
+	if (!cls || !args) {
+		return false;
+	}
 	PyOp o = OP_INST;
 	if (!strcmp (op->mnemonic, "obj")) {
 		o = OP_OBJ;
@@ -906,8 +909,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_stack_global (pvm, op);
 	case OP_NEWOBJ:
 	case OP_BUILD:
-	case OP_REDUCE:
 		return py_what_addop (pvm, 1, code);
+		// pop, pop, push pop0 (*pop1)
 	// tuple's
 	case OP_TUPLE:
 		return op_type_create_append (pvm, PY_TUPLE);

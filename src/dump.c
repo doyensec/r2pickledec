@@ -161,7 +161,7 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 
 static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 	r_return_val_if_fail (split->type == PY_SPLIT, true);
-	PyOper *pop = split->reduce;
+	PyOper *pop = split->split;
 	r_return_val_if_fail (pop->op == OP_REDUCE, true);
 	return pop->resolved == nfo->recurse;
 }
