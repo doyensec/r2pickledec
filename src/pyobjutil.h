@@ -91,6 +91,7 @@ typedef enum python_type {
 	PY_SPLIT, // meta, used to split items into before and after reduce
 	PY_WHAT, // don't know what it is, just accept operations on it
 	PY_REDUCE, // result of function call
+	PY_INST, // very similar to reduce, created by INST, OBJ
 	PY_INT, PY_STR, PY_BOOL, PY_NONE, PY_FLOAT, PY_GLOB,
 	PY_TUPLE, PY_LIST, PY_DICT, PY_SET, PY_FROZEN_SET // iters
 	// Note: PY_DICT is treated just like a list, but it's only appended to in
@@ -117,6 +118,7 @@ typedef struct python_glob {
 typedef struct python_reduce {
 	PyObj *func;
 	PyObj *args;
+	ut64 resolved;
 } PyRed;
 
 // things you can do to a python object of unkonwn type
@@ -124,8 +126,6 @@ typedef struct python_operator PyOper;
 struct python_operator {
 	PyOp op;
 	ut64 offset;
-	ut64 resolved; // populated by recures token during output
-	int refcnt;
 	RList /*PyObj**/*stack;
 };
 
@@ -143,7 +143,8 @@ struct python_object {
 		double py_float;
 		const char *py_str;
 		double py_double;
-		PyOper *split; // points to REDUCE oper that split iter
+		PyRed reduce; // used by PY_INST and PY_REDUCE
+		PyObj *split; // points to REDUCE oper that split iter
 		PyGlob py_glob;
 		RList /*PyObj**/*py_iter; // tuple, list, etc...
 		RList /*PyOper**/*py_what; // this object has transcended beyond our

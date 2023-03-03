@@ -7,7 +7,7 @@
 
 #define TAB "\t"
 
-static void py_obj_free_internal(PyObj *obj, bool deep);
+static void py_obj_free_internal(PyObj *obj, RListFree obj_free);
 
 static const char *help_msg[] = {
 	"Usage:", "pdP[j]", "Decompile python pickle",
@@ -57,14 +57,14 @@ static inline void list_free_with(RList *l, RListFree f) {
 
 static void py_obj_free(PyObj *obj) {
 	if (obj && obj->refcnt-- <= 0) {
-		py_obj_free_internal (obj, false);
+		py_obj_free_internal (obj, (RListFree)py_obj_free);
 		free (obj);
 	}
 }
 
 static void py_obj_deep_free(PyObj *obj) {
 	if (obj) {
-		py_obj_free_internal (obj, true);
+		py_obj_free_internal (obj, (RListFree)py_obj_deep_free);
 		if (obj->refcnt-- <= 0) {
 			free (obj);
 		}
@@ -72,7 +72,7 @@ static void py_obj_deep_free(PyObj *obj) {
 }
 
 static void pyop_free(PyOper *pop) {
-	if (pop && pop->refcnt-- <= 0) {
+	if (pop) {
 		void *tmp = pop->stack;
 		pop->stack = NULL;
 		list_free_with (tmp, (RListFree)py_obj_free);
@@ -80,20 +80,16 @@ static void pyop_free(PyOper *pop) {
 	}
 }
 
-static void pyop_deep_free(PyOper *pop) {
-	if (pop) {
-		void *tmp = pop->stack;
-		pop->stack = NULL;
-		list_free_with (tmp, (RListFree)py_obj_deep_free);
-		if (pop->refcnt-- <= 0) {
-			free (pop);
-		}
-	}
+static inline void py_reduce_free(PyObj *obj, RListFree obj_free) {
+	PyObj *func = obj->reduce.func;
+	PyObj *args = obj->reduce.args;
+	memset (&obj->reduce, 0, sizeof (obj->reduce));
+	obj_free (func);
+	obj_free (args);
 }
 
-static void py_obj_free_internal(PyObj *obj, bool deep) {
+static void py_obj_free_internal(PyObj *obj, RListFree obj_free) {
 	void *tmp;
-	RListFree f = NULL;
 
 	free (obj->varname);
 	obj->varname = NULL;
@@ -107,6 +103,10 @@ static void py_obj_free_internal(PyObj *obj, bool deep) {
 		free ((void *)obj->py_str);
 		obj->py_str = NULL;
 		break;
+	case PY_INST:
+	case PY_REDUCE:
+		py_reduce_free (obj, obj_free);
+		break;
 	case PY_SET:
 	case PY_FROZEN_SET:
 	case PY_DICT:
@@ -114,14 +114,12 @@ static void py_obj_free_internal(PyObj *obj, bool deep) {
 	case PY_TUPLE:
 		tmp = obj->py_iter;
 		obj->py_what = NULL;
-		f = deep? (RListFree)py_obj_deep_free: (RListFree)py_obj_free;
-		list_free_with (tmp, f);
+		list_free_with (tmp, obj_free);
 		break;
 	case PY_SPLIT:
 		tmp = obj->split;
 		obj->split = NULL;
-		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
-		f (tmp);
+		obj_free (tmp);
 		break;
 	case PY_GLOB:
 	{
@@ -129,16 +127,14 @@ static void py_obj_free_internal(PyObj *obj, bool deep) {
 		tmp = obj->py_glob.name;
 		obj->py_glob.module = NULL;
 		obj->py_glob.name = NULL;
-		f = deep? (RListFree)py_obj_deep_free: (RListFree)py_obj_free;
-		f (tmp);
-		f (tmpa);
+		obj_free (tmp);
+		obj_free (tmpa);
 		break;
 	}
 	case PY_WHAT:
 		tmp = obj->py_what;
 		obj->py_what = NULL;
-		f = deep? (RListFree)pyop_deep_free: (RListFree)pyop_free;
-		list_free_with (tmp, f);
+		r_list_free (tmp);
 		break;
 	default:
 		R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
@@ -304,6 +300,7 @@ static inline bool itter_add_split(PMState *pvm, RList *list, PyObj *split) {
 	// no reasons to put two splits next to each other
 	PyObj *obj = r_list_last (list);
 	if (obj && obj->type == PY_SPLIT) {
+		// No need for two splits in the row, keep the later split
 		py_obj_free (r_list_pop (list));
 	}
 
@@ -367,7 +364,6 @@ static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
 			return false;
 		}
 		return obj->type == PY_TUPLE || itter_add_split (pvm, obj->py_iter, split);
-		break;
 	case PY_WHAT:
 		return split_what_recures (pvm, obj->py_what, split);
 	default:
@@ -376,14 +372,13 @@ static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
 	}
 }
 
-static inline bool split_reduce(PMState *pvm, PyOper *pop) {
+static inline bool split_reduce(PMState *pvm, PyObj *obj) {
 	PyObj *split = py_obj_new (pvm, PY_SPLIT);
-	PyObj *obj = r_list_last (pop->stack); // likely a TUPLE
-	if (obj && split) {
-		split->split = pop;
-		pop->refcnt++;
+	if (split) {
+		split->split = obj;
+		obj->refcnt++;
 		pvm->recurse++;
-		bool ret = add_splits (pvm, obj, split);
+		bool ret = add_splits (pvm, obj->reduce.args, split);
 		py_obj_free (split);
 		return ret;
 	}
@@ -400,9 +395,6 @@ static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 	if (pop && args && obj) {
 		if (r_list_append (obj->py_what, pop)) {
 			pop->stack = args;
-			if (op == OP_REDUCE) {
-				return split_reduce (pvm, pop);
-			}
 			return true;
 		}
 	}
@@ -812,41 +804,49 @@ static inline bool op_stack_global(PMState *pvm, RAnalOp *op) {
 	return false;
 }
 
-static inline bool insantiate(PMState *pvm, RAnalOp *op, PyObj *cls, PyObj *args) {
-	if (!cls || !args) {
-		return false;
-	}
-	PyOp o = OP_INST;
-	if (!strcmp (op->mnemonic, "obj")) {
-		o = OP_OBJ;
-	}
-	if (args && cls) {
-		if (r_list_push (pvm->stack, cls)) {
-			if (r_list_push (pvm->stack, args)) {
-				// now everything is setup like global
-				return py_what_addop (pvm, 1, o);
-			} else {
-				r_list_pop (pvm->stack);
-			}
+static inline bool insantiate(PMState *pvm, PyObj *klass, PyObj *args) {
+	PyObj *obj = py_obj_new (pvm, PY_INST);
+	if (obj && args && klass) {
+		obj->reduce.func = klass;
+		obj->reduce.args = args;
+		if (r_list_push (pvm->stack, obj)) {
+			return split_reduce (pvm, obj);
 		}
+		args = klass = NULL;
 	}
+	py_obj_free (obj);
 	py_obj_free (args);
-	py_obj_free (cls);
+	py_obj_free (klass);
 	return false;
 }
 
 static inline bool op_inst(PMState *pvm, RAnalOp *op) {
-	// like GLOBAL + LIST + REDUCE but stack is not set up wonky
-	PyObj *cls = glob_obj (pvm, op);
-	PyObj *args = iter_to_mark (pvm, PY_LIST);
-	return insantiate (pvm, op, cls, args);
+	// like GLOBAL + TUPLE + REDUCE but stack is not set up wonky
+	PyObj *klass = glob_obj (pvm, op);
+	PyObj *args = iter_to_mark (pvm, PY_TUPLE);
+	return insantiate (pvm, klass, args);
 }
 
-static inline bool op_obj(PMState *pvm, RAnalOp *op) {
-	// like LIST + REDUCE but stack is not set up wonky
-	PyObj *cls = r_list_pop_head (pvm->stack);
-	PyObj *args = iter_to_mark (pvm, PY_LIST);
-	return insantiate (pvm, op, cls, args);
+static inline bool op_obj(PMState *pvm) {
+	// like TUPLE + REDUCE but stack is not set up wonky
+	PyObj *klass = r_list_pop_head (pvm->stack);
+	PyObj *args = iter_to_mark (pvm, PY_TUPLE);
+	return insantiate (pvm, klass, args);
+}
+
+static inline bool op_reduce(PMState *pvm, RAnalOp *op) {
+	if (r_list_length (pvm->stack) >= 2) {
+		PyObj *obj = py_obj_new (pvm, PY_REDUCE);
+		if (obj) {
+			obj->reduce.args = r_list_pop (pvm->stack);
+			obj->reduce.func = r_list_pop (pvm->stack);
+			if (obj->reduce.args && obj->reduce.func && r_list_push (pvm->stack, obj)) {
+				return split_reduce (pvm, obj);
+			}
+			py_obj_free (obj);
+		}
+	}
+	return false;
 }
 
 static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
@@ -900,7 +900,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return push_str (c, pvm, op);
 	// class stuff
 	case OP_OBJ:
-		return op_obj (pvm, op);
+		return op_obj (pvm);
 	case OP_INST:
 		return op_inst (pvm, op);
 	case OP_GLOBAL:
@@ -910,7 +910,8 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_NEWOBJ:
 	case OP_BUILD:
 		return py_what_addop (pvm, 1, code);
-		// pop, pop, push pop0 (*pop1)
+	case OP_REDUCE:
+		return op_reduce (pvm, op);
 	// tuple's
 	case OP_TUPLE:
 		return op_type_create_append (pvm, PY_TUPLE);

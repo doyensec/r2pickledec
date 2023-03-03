@@ -15,6 +15,10 @@ const char *py_type_to_name(PyType t) {
 		return "PY_STR";
 	case PY_GLOB:
 		return "PY_GLOB";
+	case PY_INST:
+		return "PY_INST";
+	case PY_REDUCE:
+		return "PY_REDUCE";
 	case PY_TUPLE:
 		return "PY_TUPLE";
 	case PY_LIST:
@@ -38,12 +42,6 @@ const char *py_type_to_name(PyType t) {
 
 const char *py_op_to_name(PyOp t) {
 	switch (t) {
-	case OP_OBJ:
-		return "obj";
-	case OP_INST:
-		return "inst";
-	case OP_REDUCE:
-		return "reduce";
 	case OP_BUILD:
 		return "build";
 	case OP_NEWOBJ:

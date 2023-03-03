@@ -124,7 +124,7 @@ tests = [
             reduce
             stop
        """,
-       "ret" : '{"stack":[{"offset":22,"type":"PY_WHAT","value":[{"offset":22,"Op":"Initial Object","args":[{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"os"},"name":{"offset":2,"type":"PY_STR","value":"system"}}}]},{"offset":22,"Op":"reduce","args":[{"offset":21,"type":"PY_TUPLE","value":[{"offset":13,"type":"PY_STR","value":"whoami"}]}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":22,"type":"PY_REDUCE","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"os"},"name":{"offset":2,"type":"PY_STR","value":"system"}}},"args":{"offset":21,"type":"PY_TUPLE","value":[{"offset":13,"type":"PY_STR","value":"whoami"}]}}}],"popstack":[]}'
     }, {
        "name" : "newobj",
        "asm" : """
@@ -269,7 +269,7 @@ tests = [
             inst "builtins int"
             stop
        """,
-       "ret" : '{"stack":[{"offset":9,"type":"PY_WHAT","value":[{"offset":9,"Op":"Initial Object","args":[{"offset":9,"type":"PY_GLOB","value":{"module":{"offset":9,"type":"PY_STR","value":"builtins"},"name":{"offset":9,"type":"PY_STR","value":"int"}}}]},{"offset":9,"Op":"inst","args":[{"offset":9,"type":"PY_LIST","value":[{"offset":3,"type":"PY_STR","value":"ff"},{"offset":7,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":9,"type":"PY_INST","value":{"func":{"offset":9,"type":"PY_GLOB","value":{"module":{"offset":9,"type":"PY_STR","value":"builtins"},"name":{"offset":9,"type":"PY_STR","value":"int"}}},"args":{"offset":9,"type":"PY_TUPLE","value":[{"offset":3,"type":"PY_STR","value":"ff"},{"offset":7,"type":"PY_INT","value":16}]}}}],"popstack":[]}'
     }, {
        "name" : "obj",
        "asm" : """
@@ -281,7 +281,7 @@ tests = [
             obj
             stop
        """,
-       "ret" : '{"stack":[{"offset":23,"type":"PY_WHAT","value":[{"offset":23,"Op":"Initial Object","args":[{"offset":3,"type":"PY_GLOB","value":{"module":{"offset":3,"type":"PY_STR","value":"builtins"},"name":{"offset":3,"type":"PY_STR","value":"int"}}}]},{"offset":23,"Op":"obj","args":[{"offset":23,"type":"PY_LIST","value":[{"offset":17,"type":"PY_STR","value":"ff"},{"offset":21,"type":"PY_INT","value":16}]}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":23,"type":"PY_INST","value":{"func":{"offset":3,"type":"PY_GLOB","value":{"module":{"offset":3,"type":"PY_STR","value":"builtins"},"name":{"offset":3,"type":"PY_STR","value":"int"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":17,"type":"PY_STR","value":"ff"},{"offset":21,"type":"PY_INT","value":16}]}}}],"popstack":[]}'
     }, {
        "name" : "list self ref `a = [];a.append(a)`",
        "asm" : """
@@ -401,7 +401,7 @@ tests = [
             reduce
             stop
        """,
-       "ret" : '{"stack":[{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":14,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"system"},"name":{"offset":10,"type":"PY_STR","value":"os"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":15,"type":"PY_STR","value":"whoami"}]}]}]}],"popstack":[]}'
+       "ret" :'{"stack":[{"offset":24,"type":"PY_REDUCE","value":{"func":{"offset":14,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"system"},"name":{"offset":10,"type":"PY_STR","value":"os"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":15,"type":"PY_STR","value":"whoami"}]}}}],"popstack":[]}'
     }, {
        "name" : "split nested lists",
        "asm" : """
@@ -422,7 +422,7 @@ tests = [
 
             stop
        """,
-       "ret" : '{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_LIST","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}},{"offset":27,"type":"PY_INT","value":42}]}]},{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}]},{"offset":1,"type":"PY_LIST","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
+       "ret" :'{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_LIST","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"type":"PY_REDUCE","value":{"func":{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}}}},{"offset":27,"type":"PY_INT","value":42}]}]},{"offset":24,"type":"PY_REDUCE","prev_seen":".stack[0].value[0].value[0].value"},{"offset":1,"type":"PY_LIST","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
     }, {
        "name" : "split dicts",
        "asm" : """
@@ -444,7 +444,7 @@ tests = [
 
             stop
        """,
-       "ret" : '{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_DICT","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}},[{"offset":27,"type":"PY_INT","value":42},{"offset":32,"type":"PY_INT","value":43}]]}]},{"offset":24,"type":"PY_WHAT","value":[{"offset":24,"Op":"Initial Object","args":[{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}}]},{"offset":24,"Op":"reduce","args":[{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}]}]},{"offset":1,"type":"PY_DICT","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
+       "ret" :'{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_DICT","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"type":"PY_REDUCE","value":{"func":{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}}}},[{"offset":27,"type":"PY_INT","value":42},{"offset":32,"type":"PY_INT","value":43}]]}]},{"offset":24,"type":"PY_REDUCE","prev_seen":".stack[0].value[0].value.value"},{"offset":1,"type":"PY_DICT","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
     }
 ]
 

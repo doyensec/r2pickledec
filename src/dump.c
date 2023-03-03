@@ -161,9 +161,9 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 
 static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 	r_return_val_if_fail (split->type == PY_SPLIT, true);
-	PyOper *pop = split->split;
-	r_return_val_if_fail (pop->op == OP_REDUCE, true);
-	return pop->resolved == nfo->recurse;
+	PyObj *red = split->split;
+	r_return_val_if_fail (red->type == PY_REDUCE || red->type == PY_INST, true);
+	return red->reduce.resolved == nfo->recurse;
 }
 
 // 0 ok, >0 printed var instead of obj (ie caller is done), <0 error
@@ -262,6 +262,54 @@ static inline bool dump_none(PrintInfo *nfo, PyObj *obj) {
 	return ret;
 }
 
+static inline bool dump_reduce(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
+
+	bool ret = dump_obj (nfo, obj->reduce.func);
+	if (obj->reduce.args->type != PY_TUPLE) {
+		ret = ret
+			&& printer_append (nfo, "(*")
+			&& dump_obj (nfo, obj->reduce.args)
+			&& printer_append (nfo, ")");
+	} else {
+		ret = ret && dump_obj (nfo, obj->reduce.args);
+	}
+	obj->reduce.resolved = nfo->recurse;
+	printer_pop_state (nfo);
+	return ret && newline (nfo);
+}
+
+static inline bool dump_inst(PrintInfo *nfo, PyObj *obj) {
+	r_return_val_if_fail (obj->reduce.args->type == PY_TUPLE, false);
+	// if there are args, it acts just like reduce
+	if (r_list_length (obj->reduce.args->py_iter)) {
+		return dump_reduce (nfo, obj);
+	}
+
+	PREPRINT (nfo, obj);
+	// no args? It's not so simple, see _instantiate in pickle.py
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
+
+	bool ret = printer_append (nfo, "_instantiate(")
+		&& dump_obj (nfo, obj->reduce.func)
+		&& printer_append (nfo, ")");
+	obj->reduce.resolved = nfo->recurse;
+	printer_pop_state (nfo);
+	return ret && newline (nfo);
+}
+
+
 static inline bool print_tabs(PrintInfo *nfo) {
 	int i;
 	if (!printer_append (nfo, "\n")) {
@@ -276,17 +324,6 @@ static inline bool print_tabs(PrintInfo *nfo) {
 	return true;
 }
 
-static bool split_has_more(RListIter *iter) {
-	while (iter) {
-		PyObj *obj = r_list_iter_get_data (iter);
-		if (obj && obj->type != PY_SPLIT) {
-			return true;
-		}
-		iter = r_list_iter_get_next (iter);
-	}
-	return false;
-}
-
 // stop loop? either end of iters or iter is an unresolved split
 static inline bool split_stop(PrintInfo *nfo, PyObj *obj_iter) {
 	if (!obj_iter->iter_next) {
@@ -294,10 +331,10 @@ static inline bool split_stop(PrintInfo *nfo, PyObj *obj_iter) {
 	}
 	PyObj *obj = r_list_iter_get_data (obj_iter->iter_next);
 	if (obj->type == PY_SPLIT) {
-		r_return_val_if_fail (obj_iter->type != PY_TUPLE, true);
+		r_return_val_if_fail (obj_iter->type != PY_TUPLE, true); // tuples don't split
 
 		RListIter *next = r_list_iter_get_next (obj_iter->iter_next);
-		if (!split_has_more (next) || !split_is_resolved (nfo, obj)) {
+		if (!next || !split_is_resolved (nfo, obj)) {
 			return true;
 		}
 		obj_iter->iter_next = next;  // iter resolved, so we skip it
@@ -520,20 +557,6 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 		&& printer_append (nfo, "\n");
 }
 
-static inline bool dump_oper_reduce(PrintInfo *nfo, PyOper *pop, const char *vn) {
-	// TODO: comment in output a distinction between INST and REDUCE, they are slightly different
-	r_return_val_if_fail (pop->op != OP_INST, false);
-	PyObj *args = r_list_last (pop->stack);
-	bool ret = args
-		&& PCOLORSTR (vn, func_var)
-		&& printer_appendf (nfo, " = ")
-		&& PCOLORSTR (vn, func_var)
-		&& printer_append (nfo, "(*")
-		&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
-	pop->resolved = nfo->recurse;
-	return ret;
-}
-
 static inline bool dump_oper_newobj(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	PyObj *args = r_list_last (pop->stack);
 	return args
@@ -604,10 +627,6 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	switch (pop->op) {
 	case OP_FAKE_INIT:
 		return dump_oper_init (nfo, pop, vn);
-	case OP_OBJ:
-	case OP_INST:
-	case OP_REDUCE:
-		return dump_oper_reduce (nfo, pop, vn);
 	case OP_NEWOBJ:
 		return dump_oper_newobj (nfo, pop, vn);
 	case OP_BUILD:
@@ -687,6 +706,10 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	case PY_TUPLE:
 		PREPRINT (nfo, obj);
 		return dump_iter_loop (nfo, obj) && newline (nfo);
+	case PY_REDUCE:
+		return dump_reduce (nfo, obj);
+	case PY_INST:
+		return dump_inst (nfo, obj);
 	case PY_LIST:
 	case PY_SET:
 	case PY_FROZEN_SET:
