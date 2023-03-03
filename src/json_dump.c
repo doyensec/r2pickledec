@@ -97,9 +97,9 @@ static inline bool py_reduce(PJ *pj, PyObj *obj, RList *path) {
 	if (
 		pj_o (pj)
 
-		&& path_push (path, strdup(".func"))
+		&& path_push (path, strdup(".glob"))
 		&& pj_k (pj, "func")
-		&& py_obj (pj, obj->reduce.func, path)
+		&& py_obj (pj, obj->reduce.glob, path)
 		&& path_pop (path)
 
 		&& path_push (path, strdup(".args"))

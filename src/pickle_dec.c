@@ -81,11 +81,13 @@ static void pyop_free(PyOper *pop) {
 }
 
 static inline void py_reduce_free(PyObj *obj, RListFree obj_free) {
-	PyObj *func = obj->reduce.func;
+	PyObj *glob = obj->reduce.glob;
 	PyObj *args = obj->reduce.args;
+	PyObj *kwargs = obj->reduce.kwargs;
 	memset (&obj->reduce, 0, sizeof (obj->reduce));
-	obj_free (func);
+	obj_free (glob);
 	obj_free (args);
+	obj_free (kwargs);
 }
 
 static void py_obj_free_internal(PyObj *obj, RListFree obj_free) {
@@ -105,6 +107,7 @@ static void py_obj_free_internal(PyObj *obj, RListFree obj_free) {
 		break;
 	case PY_INST:
 	case PY_REDUCE:
+	case PY_NEWOBJ:
 		py_reduce_free (obj, obj_free);
 		break;
 	case PY_SET:
@@ -807,7 +810,7 @@ static inline bool op_stack_global(PMState *pvm, RAnalOp *op) {
 static inline bool insantiate(PMState *pvm, PyObj *klass, PyObj *args) {
 	PyObj *obj = py_obj_new (pvm, PY_INST);
 	if (obj && args && klass) {
-		obj->reduce.func = klass;
+		obj->reduce.glob = klass;
 		obj->reduce.args = args;
 		if (r_list_push (pvm->stack, obj)) {
 			return split_reduce (pvm, obj);
@@ -827,9 +830,33 @@ static inline bool op_inst(PMState *pvm, RAnalOp *op) {
 	return insantiate (pvm, klass, args);
 }
 
+static inline bool op_newobj(PMState *pvm, RAnalOp *op, bool kw) {
+	if ((kw && r_list_length (pvm->stack) < 3) || r_list_length (pvm->stack) < 2) {
+		return false;
+	}
+	PyObj *obj = py_obj_new (pvm, PY_NEWOBJ);
+	if (obj) {
+		if (kw) {
+			obj->reduce.kwargs = r_list_pop (pvm->stack);
+			if (!obj->reduce.kwargs) {
+				goto newobj_clean;
+			}
+		}
+		obj->reduce.args = r_list_pop (pvm->stack);
+		obj->reduce.glob = r_list_pop (pvm->stack);
+		if (obj->reduce.args && obj->reduce.glob && r_list_push (pvm->stack, obj)) {
+			return true;
+		}
+	}
+
+newobj_clean:
+	py_obj_free (obj);
+	return false;
+}
+
 static inline bool op_obj(PMState *pvm) {
 	// like TUPLE + REDUCE but stack is not set up wonky
-	PyObj *klass = r_list_pop_head (pvm->stack);
+	PyObj *klass = r_list_pop (pvm->stack);
 	PyObj *args = iter_to_mark (pvm, PY_TUPLE);
 	return insantiate (pvm, klass, args);
 }
@@ -839,8 +866,8 @@ static inline bool op_reduce(PMState *pvm, RAnalOp *op) {
 		PyObj *obj = py_obj_new (pvm, PY_REDUCE);
 		if (obj) {
 			obj->reduce.args = r_list_pop (pvm->stack);
-			obj->reduce.func = r_list_pop (pvm->stack);
-			if (obj->reduce.args && obj->reduce.func && r_list_push (pvm->stack, obj)) {
+			obj->reduce.glob = r_list_pop (pvm->stack);
+			if (obj->reduce.args && obj->reduce.glob && r_list_push (pvm->stack, obj)) {
 				return split_reduce (pvm, obj);
 			}
 			py_obj_free (obj);
@@ -903,11 +930,14 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_obj (pvm);
 	case OP_INST:
 		return op_inst (pvm, op);
+	case OP_NEWOBJ_EX:
+		return op_newobj (pvm, op, true);
+	case OP_NEWOBJ:
+		return op_newobj (pvm, op, false);
 	case OP_GLOBAL:
 		return op_global (pvm, op);
 	case OP_STACK_GLOBAL:
 		return op_stack_global (pvm, op);
-	case OP_NEWOBJ:
 	case OP_BUILD:
 		return py_what_addop (pvm, 1, code);
 	case OP_REDUCE:
@@ -977,7 +1007,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_EXT2:
 	case OP_EXT4:
 	// PROTO 4
-	case OP_NEWOBJ_EX:
 	case OP_NEXT_BUFFER:
 	case OP_READONLY_BUFFER:
 

@@ -17,6 +17,8 @@ const char *py_type_to_name(PyType t) {
 		return "PY_GLOB";
 	case PY_INST:
 		return "PY_INST";
+	case PY_NEWOBJ:
+		return "PY_NEWOBJ";
 	case PY_REDUCE:
 		return "PY_REDUCE";
 	case PY_TUPLE:
@@ -44,10 +46,6 @@ const char *py_op_to_name(PyOp t) {
 	switch (t) {
 	case OP_BUILD:
 		return "build";
-	case OP_NEWOBJ:
-		return "newobj";
-	case OP_NEWOBJ_EX:
-		return "newobj_ex";
 	case OP_APPEND:
 		return "append";
 	case OP_SETITEM:

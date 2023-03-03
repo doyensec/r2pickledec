@@ -145,6 +145,9 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 		case PY_INST:
 			obj->varname = r_str_newf ("inst_x%" PFMT64x, obj->offset);
 			break;
+		case PY_NEWOBJ:
+			obj->varname = r_str_newf ("obj_x%" PFMT64x, obj->offset);
+			break;
 		case PY_REDUCE:
 			obj->varname = r_str_newf ("ret_x%" PFMT64x, obj->offset);
 			break;
@@ -226,10 +229,21 @@ static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
 	return false;
 }
 
+static inline bool obj_has_reduce(PyObj *obj) {
+	switch (obj->type) {
+	case PY_REDUCE:
+	case PY_INST:
+	case PY_NEWOBJ:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 	r_return_val_if_fail (split->type == PY_SPLIT, true);
 	PyObj *red = split->split;
-	r_return_val_if_fail (red->type == PY_REDUCE || red->type == PY_INST, true);
+	r_return_val_if_fail (obj_has_reduce (red), true);
 	return red->reduce.resolved == nfo->recurse;
 }
 
@@ -338,7 +352,9 @@ static inline bool dump_reduce(PrintInfo *nfo, PyObj *obj) {
 	ps->first = false;
 	ps->ret = false;
 
-	bool ret = dump_obj (nfo, obj->reduce.func);
+	// HACK: artificially inflate to ensure it gets a variable, do not return without fixing
+	obj->reduce.glob->refcnt++;
+	bool ret = dump_obj (nfo, obj->reduce.glob);
 	if (obj->reduce.args->type != PY_TUPLE) {
 		ret = ret
 			&& printer_append (nfo, "(*")
@@ -348,6 +364,7 @@ static inline bool dump_reduce(PrintInfo *nfo, PyObj *obj) {
 		ret = ret && dump_obj (nfo, obj->reduce.args);
 	}
 	obj->reduce.resolved = nfo->recurse;
+	obj->reduce.glob->refcnt--;
 	printer_pop_state (nfo);
 	return ret && newline (nfo);
 }
@@ -368,11 +385,45 @@ static inline bool dump_inst(PrintInfo *nfo, PyObj *obj) {
 	ps->first = false;
 	ps->ret = false;
 
+	// HACK: artificially inflate to ensure it gets a variable, do not return without fixing
+	obj->reduce.glob->refcnt++;
 	bool ret = printer_append (nfo, "_instantiate(")
-		&& dump_obj (nfo, obj->reduce.func)
+		&& dump_obj (nfo, obj->reduce.glob)
 		&& printer_append (nfo, ")");
 	obj->reduce.resolved = nfo->recurse;
+	obj->reduce.glob->refcnt--;
 	printer_pop_state (nfo);
+	return ret && newline (nfo);
+}
+
+static inline bool dump_newobj(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
+
+	// HACK: artificially inflate to ensure it gets a variable, do not return without fixing
+	obj->reduce.glob->refcnt++;
+
+	/* obj = cls.__new__(cls, *args, **kwargs) */
+	bool ret = dump_obj (nfo, obj->reduce.glob)
+		&& printer_append (nfo, ".__new__(")
+		&& dump_obj (nfo, obj->reduce.glob)
+		&& printer_append (nfo, ", *")
+		&& dump_obj (nfo, obj->reduce.args);
+
+	if (ret && obj->reduce.kwargs) {
+		ret = printer_append (nfo, ", **")
+			&& dump_obj (nfo, obj->reduce.kwargs);
+	}
+	ret = ret && printer_append (nfo, ")");
+	obj->reduce.glob->refcnt--;
+	obj->reduce.resolved = nfo->recurse;
+	printer_pop_state (nfo);
+
 	return ret && newline (nfo);
 }
 
@@ -777,6 +828,8 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 		return dump_reduce (nfo, obj);
 	case PY_INST:
 		return dump_inst (nfo, obj);
+	case PY_NEWOBJ:
+		return dump_newobj (nfo, obj);
 	case PY_LIST:
 	case PY_SET:
 	case PY_FROZEN_SET:
