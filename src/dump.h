@@ -12,7 +12,6 @@ typedef struct print_state {
 typedef struct print_info {
 	bool stack, popstack, metastack; // input from user
 
-	st64 varid; // used to ensure variable names are unique
 	bool stack_start; // first on stack
 	RConsPrintablePalette *pal;
 

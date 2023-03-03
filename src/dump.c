@@ -106,12 +106,79 @@ static bool printer_pop_state(PrintInfo *nfo) {
 	return ret;
 }
 
+static inline char *glob_varname(PyObj *obj) {
+	PyObj *name = obj->py_glob.name;
+	if (name->type == PY_STR) {
+		const char *c = name->py_str;
+		while (IS_LOWER (*c) || IS_UPPER (*c)) {
+			c++;
+		}
+		if (!*c) {
+			return r_str_newf ("g_%s_x%" PFMT64x, name->py_str, obj->offset);
+		}
+
+	}
+	return r_str_newf ("g_x%" PFMT64x, obj->offset);
+}
+
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 	if (!obj->varname) {
-		if (obj->memo_id != UT64_MAX) {
-			obj->varname = r_str_newf ("memo_%"PFMT64x, obj->memo_id);
-		} else {
-			obj->varname = r_str_newf ("var_%"PFMT64x, nfo->varid++);
+		switch (obj->type) {
+		case PY_NONE:
+			obj->varname = r_str_newf ("none_x%" PFMT64x, obj->offset);
+			break;
+		case PY_WHAT:
+			obj->varname = r_str_newf ("what_x%" PFMT64x, obj->offset);
+			break;
+		case PY_INT:
+			obj->varname = r_str_newf ("int_%d_x%" PFMT64x, obj->py_int, obj->offset);
+			break;
+		case PY_FLOAT:
+			obj->varname = r_str_newf ("float_x%" PFMT64x, obj->offset);
+			break;
+		case PY_STR:
+			obj->varname = r_str_newf ("str_x%" PFMT64x, obj->offset);
+			break;
+		case PY_GLOB:
+			obj->varname = glob_varname (obj);
+			break;
+		case PY_INST:
+			obj->varname = r_str_newf ("inst_x%" PFMT64x, obj->offset);
+			break;
+		case PY_REDUCE:
+			obj->varname = r_str_newf ("ret_x%" PFMT64x, obj->offset);
+			break;
+		case PY_TUPLE:
+			obj->varname = r_str_newf ("tup_x%" PFMT64x, obj->offset);
+			break;
+		case PY_LIST:
+			obj->varname = r_str_newf ("lst_x%" PFMT64x, obj->offset);
+			break;
+		case PY_SET:
+			obj->varname = r_str_newf ("set_x%" PFMT64x, obj->offset);
+			break;
+		case PY_FROZEN_SET:
+			obj->varname = r_str_newf ("fset_x%" PFMT64x, obj->offset);
+			break;
+		case PY_BOOL:
+			if (obj->py_bool) {
+				obj->varname = r_str_newf ("true_x%" PFMT64x, obj->offset);
+			} else {
+				obj->varname = r_str_newf ("false_x%" PFMT64x, obj->offset);
+			}
+			break;
+		case PY_DICT:
+			obj->varname = r_str_newf ("dict_x%" PFMT64x, obj->offset);
+			break;
+		case PY_SPLIT:
+		case PY_NOT_RIGHT:
+			obj->varname = r_str_newf ("META_x%" PFMT64x, obj->offset);
+			r_warn_if_reached ();
+			break;
+		default:
+			obj->varname = r_str_newf ("UNKOWN_x%" PFMT64x, obj->offset);
+			r_warn_if_reached ();
+			break;
 		}
 	}
 	return obj->varname;
