@@ -444,7 +444,20 @@ tests = [
 
             stop
        """,
-       "ret" :'{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_DICT","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"type":"PY_REDUCE","value":{"func":{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}}}},[{"offset":27,"type":"PY_INT","value":42},{"offset":32,"type":"PY_INT","value":43}]]}]},{"offset":24,"type":"PY_REDUCE","prev_seen":".stack[0].value[0].value.value"},{"offset":1,"type":"PY_DICT","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":0,"type":"PY_LIST","value":[{"offset":1,"type":"PY_DICT","value":[{"offset":24,"type":"PY_SPLIT","value":{"offset":24,"type":"PY_REDUCE","value":{"func":{"offset":5,"type":"PY_GLOB","value":{"module":{"offset":5,"type":"PY_STR","value":"builtins"},"name":{"offset":5,"type":"PY_STR","value":"print"}}},"args":{"offset":23,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_LIST","prev_seen":".stack[0]"}]}}}},[{"offset":27,"type":"PY_INT","value":42},{"offset":32,"type":"PY_INT","value":43}]]}]},{"offset":24,"type":"PY_REDUCE","prev_seen":".stack[0].value[0].value.value"},{"offset":1,"type":"PY_DICT","prev_seen":".stack[0].value[0]"}],"popstack":[]}'
+    }, {
+       "name" : "split inst",
+       "asm" : """
+            mark
+            empty_list
+            memoize
+            inst "builtins print"
+            binget 0
+            binint 42
+            append
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":3,"type":"PY_INST","value":{"func":{"offset":3,"type":"PY_GLOB","value":{"module":{"offset":3,"type":"PY_STR","value":"builtins"},"name":{"offset":3,"type":"PY_STR","value":"print"}}},"args":{"offset":3,"type":"PY_TUPLE","value":[{"offset":1,"type":"PY_LIST","value":[{"offset":3,"type":"PY_SPLIT","value":{"offset":3,"type":"PY_INST","prev_seen":".stack[0]"}},{"offset":21,"type":"PY_INT","value":42}]}]}}},{"offset":1,"type":"PY_LIST","prev_seen":".stack[0].value.args.value[0]"}],"popstack":[]}'
     }
 ]
 
