@@ -458,6 +458,18 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":3,"type":"PY_INST","value":{"func":{"offset":3,"type":"PY_GLOB","value":{"module":{"offset":3,"type":"PY_STR","value":"builtins"},"name":{"offset":3,"type":"PY_STR","value":"print"}}},"args":{"offset":3,"type":"PY_TUPLE","value":[{"offset":1,"type":"PY_LIST","value":[{"offset":3,"type":"PY_SPLIT","value":{"offset":3,"type":"PY_INST","prev_seen":".stack[0]"}},{"offset":21,"type":"PY_INT","value":42}]}]}}},{"offset":1,"type":"PY_LIST","prev_seen":".stack[0].value.args.value[0]"}],"popstack":[]}'
+    }, {
+       "name" : "split inst",
+       "asm" : """
+            short_binstring "requests.sessions"
+            short_binstring "Session"
+            stack_global
+            empty_tuple
+            empty_dict
+            newobj_ex
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":31,"type":"PY_NEWOBJ","value":{"func":{"offset":28,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":19,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]},"kwargs":{"offset":30,"type":"PY_DICT","value":[]}}}],"popstack":[]}'
     }
 ]
 
