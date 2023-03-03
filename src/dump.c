@@ -675,17 +675,6 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 		&& printer_append (nfo, "\n");
 }
 
-static inline bool dump_oper_newobj(PrintInfo *nfo, PyOper *pop, const char *vn) {
-	PyObj *args = r_list_last (pop->stack);
-	return args
-		&& PCOLORSTR (vn, func_var)
-		&& printer_appendf (nfo, " = ")
-		&& PCOLORSTR (vn, func_var)
-		&& printer_append (nfo, ".__new__(")
-		&& PCOLORSTR (vn, func_var)
-		&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
-}
-
 static inline bool dump_oper_build(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	PyObj *args = r_list_last (pop->stack);
 	return args
@@ -745,8 +734,6 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	switch (pop->op) {
 	case OP_FAKE_INIT:
 		return dump_oper_init (nfo, pop, vn);
-	case OP_NEWOBJ:
-		return dump_oper_newobj (nfo, pop, vn);
 	case OP_BUILD:
 		return dump_oper_build (nfo, pop, vn);
 	case OP_APPEND:

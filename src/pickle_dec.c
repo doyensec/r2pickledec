@@ -856,7 +856,7 @@ newobj_clean:
 
 static inline bool op_obj(PMState *pvm) {
 	// like TUPLE + REDUCE but stack is not set up wonky
-	PyObj *klass = r_list_pop (pvm->stack);
+	PyObj *klass = r_list_pop_head (pvm->stack);
 	PyObj *args = iter_to_mark (pvm, PY_TUPLE);
 	return insantiate (pvm, klass, args);
 }

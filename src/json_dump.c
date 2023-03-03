@@ -94,9 +94,7 @@ static inline bool py_glob(PJ *pj, PyObj *obj, RList *path) {
 }
 
 static inline bool py_reduce(PJ *pj, PyObj *obj, RList *path) {
-	if (
-		pj_o (pj)
-
+	bool ret = pj_o (pj)
 		&& path_push (path, strdup(".glob"))
 		&& pj_k (pj, "func")
 		&& py_obj (pj, obj->reduce.glob, path)
@@ -105,13 +103,15 @@ static inline bool py_reduce(PJ *pj, PyObj *obj, RList *path) {
 		&& path_push (path, strdup(".args"))
 		&& pj_k (pj, "args")
 		&& py_obj (pj, obj->reduce.args, path)
-		&& path_pop (path)
+		&& path_pop (path);
 
-		&& pj_end (pj)
-	) {
-		return true;
+	if (ret && obj->reduce.kwargs) {
+		ret = path_push (path, strdup(".kwargs"))
+		&& pj_k (pj, "kwargs")
+		&& py_obj (pj, obj->reduce.kwargs, path)
+		&& path_pop (path);
 	}
-	return false;
+	return ret && pj_end (pj);
 }
 
 static inline bool pj_py_dict(PJ *pj, RList *l, RList *path) {
@@ -225,6 +225,7 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_GLOB:
 		ret &= py_glob (pj, obj, path);
 		break;
+	case PY_NEWOBJ:
 	case PY_INST:
 	case PY_REDUCE:
 		ret &= py_reduce (pj, obj, path);
