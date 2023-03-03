@@ -9,6 +9,7 @@
 
 static inline RStrBuf *printer_getout(PrintInfo *nfo, bool create) {
 	PrState *ps = r_list_last (nfo->outstack);
+	r_return_val_if_fail (ps, NULL);
 	if (!ps->out && create) {
 		ps->out = r_strbuf_new ("");
 	}
