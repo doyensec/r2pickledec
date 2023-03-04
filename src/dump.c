@@ -530,8 +530,7 @@ static inline bool dump_iter_loop(PrintInfo *nfo, PyObj *obj_iter) {
 static inline bool iter_ready_continue(PrintInfo *nfo, PyObj *obj) {
 	if (obj->varname && obj->iter_next) {
 		PyObj *o = r_list_iter_get_data (obj->iter_next);
-		r_return_val_if_fail (o->type == PY_SPLIT, false);
-		if (split_is_resolved (nfo, o)) {
+		if (o->type == PY_SPLIT && split_is_resolved (nfo, o)) {
 			return true;
 		}
 	}
