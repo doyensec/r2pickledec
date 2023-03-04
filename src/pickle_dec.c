@@ -349,15 +349,6 @@ static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
 	obj->recurse = pvm->recurse;
 
 	switch (obj->type) {
-	case PY_NOT_RIGHT:
-	case PY_INT:
-	case PY_STR:
-	case PY_BOOL:
-	case PY_NONE:
-	case PY_FLOAT:
-	case PY_GLOB:
-	case PY_SPLIT:
-		return true;
 	case PY_LIST:
 	case PY_FROZEN_SET:
 	case PY_SET:
@@ -370,8 +361,7 @@ static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
 	case PY_WHAT:
 		return split_what_recures (pvm, obj->py_what, split);
 	default:
-		r_warn_if_reached ();
-		return false;
+		return true;
 	}
 }
 
