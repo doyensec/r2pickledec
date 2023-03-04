@@ -507,12 +507,12 @@ static inline bool dump_iter_loop(PrintInfo *nfo, PyObj *obj_iter) {
 			if (tabbed) {
 				ret &= print_tabs (nfo);
 			}
+			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
 			ret &= dump_obj (nfo, obj);
 			if (!ret) {
 				break;
 			}
 
-			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
 			if (split_stop (nfo, obj_iter)) {
 				break;
 			}
@@ -565,12 +565,12 @@ static inline bool dump_dict(PrintInfo *nfo, PyObj *obj_iter) {
 				ret &= print_tabs (nfo);
 			}
 
+			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
 			ret &= dump_obj (nfo, obj);
 			if (!ret) {
 				break;
 			}
 
-			obj_iter->iter_next = r_list_iter_get_next (obj_iter->iter_next);
 			if (split_stop (nfo, obj_iter)) {
 				break;
 			}
