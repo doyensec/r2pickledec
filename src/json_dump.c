@@ -156,7 +156,7 @@ static inline bool pj_py_dict(PJ *pj, RList *l, RList *path) {
 	return false;
 }
 
-static inline bool pj_pyop(PJ *pj, PyOper *pop, RList *path) {
+static inline bool pj_pyop_m(PJ *pj, PyOper *pop, RList *path) {
 	if (
 		pj_o (pj)
 		&& pj_kn (pj, "offset", pop->offset)
@@ -169,6 +169,21 @@ static inline bool pj_pyop(PJ *pj, PyOper *pop, RList *path) {
 	return false;
 }
 
+static inline bool pj_pyop_s(PJ *pj, PyOper *pop, RList *path) {
+	if (!pj_o (pj)
+		|| !pj_kn (pj, "offset", pop->offset)
+		|| !pj_ks (pj, "Op", py_op_to_name (pop->op))
+		|| !pj_k (pj, "arg")
+		|| !path_push (path, strdup (".arg"))
+		|| !py_obj (pj, pop->obj, path)
+		|| !path_pop (path)
+		|| !pj_end (pj)
+	) {
+		return false;
+	}
+	return true;
+}
+
 static inline bool pj_obj_what(PJ *pj, PyObj *obj, RList *path) {
 	if (!pj_a (pj)) {
 		return false;
@@ -179,22 +194,17 @@ static inline bool pj_obj_what(PJ *pj, PyObj *obj, RList *path) {
 	r_list_foreach (obj->py_what, iter, pop) {
 		switch (pop->op) {
 		case OP_FAKE_SPLIT:
-			if (pop != r_list_last (obj->py_what)) {
-				if (!pj_o (pj)
-					|| !pj_kn (pj, "offset", pop->offset)
-					|| !pj_ks (pj, "Op", py_op_to_name (pop->op))
-					|| !pj_k (pj, "arg")
-					|| !path_push (path, strdup (".arg"))
-					|| !py_obj (pj, pop->obj, path)
-					|| !path_pop (path)
-					|| !pj_end (pj)
-				) {
-					return false;
-				}
+			if (pop == r_list_last (obj->py_what)) {
+				continue;
+			}
+			// fallthrough
+		case OP_FAKE_INIT:
+			if (!pj_pyop_s (pj, pop, path)) {
+				return false;
 			}
 			break;
 		default:
-			if (!pj_pyop (pj, pop, path)) {
+			if (!pj_pyop_m (pj, pop, path)) {
 				return false;
 			}
 			break;

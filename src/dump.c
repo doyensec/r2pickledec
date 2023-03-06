@@ -665,7 +665,7 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	return
 		PCOLORSTR (vn, func_var)
 		&& printer_append (nfo, " = ")
-		&& dump_obj (nfo, r_list_last (pop->stack))
+		&& dump_obj (nfo, pop->obj)
 		&& printer_append (nfo, "\n");
 }
 

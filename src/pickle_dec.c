@@ -75,6 +75,7 @@ static void pyop_free(PyOper *pop) {
 	if (pop) {
 		void *tmp;
 		switch (pop->op) {
+		case OP_FAKE_INIT:
 		case OP_FAKE_SPLIT:
 			tmp = pop->obj;
 			pop->obj = NULL;
@@ -236,40 +237,39 @@ static inline PyOper *py_oper_new(PMState *pvm, PyOp op, bool initlist) {
 	return NULL;
 }
 
-static inline PyObj *py_what_new(PMState *pvm, PyObj *obj) {
-	PyObj *wat = py_obj_new (pvm, PY_WHAT);
-	PyOper *pop = py_oper_new (pvm, OP_FAKE_INIT, true);
+static inline bool py_what_new(PMState *pvm, PyObj *obj) {
+	// obj becomes a PY_WHAT, so ALL references must also.
+	// This means keeping same pointer, but replacing internals
+	PyObj *pinit = R_NEW (PyObj);
+	PyOper *pop = py_oper_new (pvm, OP_FAKE_INIT, false);
+	RList *l = r_list_newf ((RListFree)pyop_free);
 
-	if (wat && pop) {
-		wat->py_what = r_list_newf ((RListFree)pyop_free);
-		if (wat->py_what && r_list_push (wat->py_what, pop)) {
-			if (r_list_push (pop->stack, obj)) {
-				return wat;
-			}
-		}
+	if (pinit && pop && l && r_list_push (l, pop)) {
+		// pinit populated with original object info
+		memcpy (pinit, obj, sizeof (*pinit));
+		pinit->refcnt = 0;
+
+		// pop references pinit
+		pop->obj = pinit;
+
+		// obj becomes PY_WHAT, keeping references from original obj
+		obj->type = PY_WHAT;
+		obj->offset = pvm->offset;
+		obj->py_what = l;
+		return true;
 	}
+	r_list_free (l);
 	pyop_free (pop);
-	py_obj_free (wat);
-	return NULL;
+	py_obj_free (pinit);
+	return false;
 }
 
 // turn obj at top of `stack` into PY_WHAT, if not already, and return it
 static inline PyObj *stack_top_to_what(PMState *pvm, RList *stack) {
 	if (stack) {
-		RListIter *tail = r_list_tail (stack);
-		if (tail && tail->data) {
-			PyObj **objp = (PyObj **)&tail->data;
-			if (*objp) {
-				if ((*objp)->type == PY_WHAT) {
-					return *objp;
-				}
-				PyObj *tmp = py_what_new (pvm, *objp);
-				if (tmp) {
-					*objp = tmp;
-					return tmp;
-				}
-				py_obj_free (tmp);
-			}
+		PyObj *obj = r_list_last (stack);
+		if (obj && (obj->type == PY_WHAT || py_what_new (pvm, obj))) {
+			return obj;
 		}
 	}
 	R_LOG_ERROR ("Failed to change stack top to PY_WAHT offset: 0x%"PFMT64x, pvm->offset);
@@ -341,6 +341,11 @@ static inline bool split_what_recures(PMState *pvm, RList *list, PyObj *split) {
 		switch (pop->op) {
 		case OP_FAKE_SPLIT:
 			continue;
+		case OP_FAKE_INIT:
+			if (!add_splits (pvm, pop->obj, split)) {
+				return false;
+			}
+			break;
 		default:
 			if (!split_iter_recures (pvm, pop->stack, split)) {
 				return false;

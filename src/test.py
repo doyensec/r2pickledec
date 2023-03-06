@@ -146,7 +146,7 @@ tests = [
             build
             stop
        """,
-       "ret" : '{"stack":[{"offset":32,"type":"PY_WHAT","value":[{"offset":32,"Op":"Initial Object","args":[{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}]},{"offset":32,"Op":"build","args":[{"offset":31,"type":"PY_TUPLE","value":[]}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":32,"type":"PY_WHAT","value":[{"offset":32,"Op":"Initial Object","arg":{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}},{"offset":32,"Op":"build","args":[{"offset":31,"type":"PY_TUPLE","value":[]}]}]}],"popstack":[]}'
     }, {
        "name" : "setitem on dict",
        "asm" : """
@@ -170,7 +170,7 @@ tests = [
             setitem
             stop
        """,
-       "ret" : '{"stack":[{"offset":45,"type":"PY_WHAT","value":[{"offset":45,"Op":"Initial Object","args":[{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}]},{"offset":45,"Op":"setitem","args":[{"offset":31,"type":"PY_STR","value":"test_key"},{"offset":44,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":45,"type":"PY_WHAT","value":[{"offset":45,"Op":"Initial Object","arg":{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}},{"offset":45,"Op":"setitem","args":[{"offset":31,"type":"PY_STR","value":"test_key"},{"offset":44,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}'
     }, {
        "name" : "appendsSSSS",
        "asm" : """
@@ -201,7 +201,7 @@ tests = [
             setitems
             stop
        """,
-       "ret" : '{"stack":[{"offset":76,"type":"PY_WHAT","value":[{"offset":76,"Op":"Initial Object","args":[{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}]},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"test_key"},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"test_key2"},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"test_key3"},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":76,"type":"PY_WHAT","value":[{"offset":76,"Op":"Initial Object","arg":{"offset":30,"type":"PY_NEWOBJ","value":{"func":{"offset":2,"type":"PY_GLOB","value":{"module":{"offset":2,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":2,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]}}}},{"offset":76,"Op":"setitems","args":[{"offset":32,"type":"PY_STR","value":"test_key"},{"offset":45,"type":"PY_BOOL","value":true},{"offset":46,"type":"PY_STR","value":"test_key2"},{"offset":60,"type":"PY_BOOL","value":true},{"offset":61,"type":"PY_STR","value":"test_key3"},{"offset":75,"type":"PY_BOOL","value":true}]}]}],"popstack":[]}'
     }, {
        "name" : "memoize",
        "asm" : """
@@ -388,7 +388,7 @@ tests = [
 			additems
 			stop
        """,
-       "ret" : '{"stack":[{"offset":10,"type":"PY_WHAT","value":[{"offset":10,"Op":"Initial Object","args":[{"offset":2,"type":"PY_LIST","value":[]}]},{"offset":10,"Op":"additems","args":[{"offset":4,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}]}]}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":10,"type":"PY_WHAT","value":[{"offset":10,"Op":"Initial Object","arg":{"offset":2,"type":"PY_LIST","value":[]}},{"offset":10,"Op":"additems","args":[{"offset":4,"type":"PY_INT","value":1},{"offset":6,"type":"PY_INT","value":2},{"offset":8,"type":"PY_INT","value":3}]}]}],"popstack":[]}'
     }, {
        "name" : "stack_global",
        "asm" : """
