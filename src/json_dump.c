@@ -177,8 +177,27 @@ static inline bool pj_obj_what(PJ *pj, PyObj *obj, RList *path) {
 	PyOper *pop;
 	RListIter *iter;
 	r_list_foreach (obj->py_what, iter, pop) {
-		if (!pj_pyop (pj, pop, path)) {
-			return false;
+		switch (pop->op) {
+		case OP_FAKE_SPLIT:
+			if (pop != r_list_last (obj->py_what)) {
+				if (!pj_o (pj)
+					|| !pj_kn (pj, "offset", pop->offset)
+					|| !pj_ks (pj, "Op", py_op_to_name (pop->op))
+					|| !pj_k (pj, "arg")
+					|| !path_push (path, strdup (".arg"))
+					|| !py_obj (pj, pop->obj, path)
+					|| !path_pop (path)
+					|| !pj_end (pj)
+				) {
+					return false;
+				}
+			}
+			break;
+		default:
+			if (!pj_pyop (pj, pop, path)) {
+				return false;
+			}
+			break;
 		}
 	}
 	return pj_end (pj)? true: false;

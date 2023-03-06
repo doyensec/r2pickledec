@@ -58,6 +58,8 @@ const char *py_op_to_name(PyOp t) {
 		return "appends";
 	case OP_ADDITEMS:
 		return "additems";
+	case OP_FAKE_SPLIT:
+		return "OP_FAKE_SPLIT";
 	default:
 		R_LOG_ERROR ("Unkown opcode %d", t);
 		r_warn_if_reached ();

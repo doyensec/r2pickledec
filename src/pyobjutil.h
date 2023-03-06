@@ -83,7 +83,7 @@ typedef enum opcode {
 	OP_READONLY_BUFFER = '\x98',
 
 	// META OPCODES... not real, used to make code eaiser
-	OP_FAKE_INIT,
+	OP_FAKE_INIT, OP_FAKE_SPLIT,
 } PyOp;
 
 typedef enum python_type {
@@ -126,7 +126,10 @@ typedef struct python_operator PyOper;
 struct python_operator {
 	PyOp op;
 	ut64 offset;
-	RList /*PyObj**/*stack;
+	union {
+		RList /*PyObj**/*stack;
+		PyObj *obj;
+	};
 };
 
 struct python_object {

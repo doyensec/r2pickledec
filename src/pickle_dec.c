@@ -73,9 +73,16 @@ static void py_obj_deep_free(PyObj *obj) {
 
 static void pyop_free(PyOper *pop) {
 	if (pop) {
-		void *tmp = pop->stack;
-		pop->stack = NULL;
-		list_free_with (tmp, (RListFree)py_obj_free);
+		void *tmp;
+		switch (pop->op) {
+		case OP_FAKE_SPLIT:
+			tmp = pop->obj;
+			pop->obj = NULL;
+		default:
+			tmp = pop->stack;
+			pop->stack = NULL;
+			list_free_with (tmp, (RListFree)py_obj_free);
+		}
 		free (pop);
 	}
 }
@@ -328,17 +335,33 @@ static inline bool split_iter_recures(PMState *pvm, RList *list, PyObj *split) {
 }
 
 static inline bool split_what_recures(PMState *pvm, RList *list, PyObj *split) {
-	RListIter *iter, *iteriter;
+	RListIter *iter;
 	PyOper *pop;
 	r_list_foreach (list, iter, pop) {
-		PyObj *obj;
-		r_list_foreach (pop->stack, iteriter, obj) {
-			if (!add_splits (pvm, obj, split)) {
+		switch (pop->op) {
+		case OP_FAKE_SPLIT:
+			continue;
+		default:
+			if (!split_iter_recures (pvm, pop->stack, split)) {
 				return false;
 			}
 		}
 	}
-	return true;
+
+	pop = r_list_last (list);
+	if (pop && pop->op == OP_FAKE_SPLIT) {
+		pyop_free (r_list_pop (list));
+	}
+
+	pop = py_oper_new (pvm, OP_FAKE_SPLIT, false);
+	if (pop && r_list_push (list, pop)) {
+		pop->obj = split;
+		split->refcnt++;
+		return true;
+	}
+
+	pyop_free (pop);
+	return false;
 }
 
 static bool add_splits(PMState *pvm, PyObj *obj, PyObj *split) {
