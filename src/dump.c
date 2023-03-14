@@ -7,6 +7,8 @@
 
 #define PSTATE(nfo, x) ((PrState *)r_list_last (nfo->outstack))->x
 
+bool dump_obj_no_pre(PrintInfo *nfo, PyObj *obj);
+
 static inline RStrBuf *printer_getout(PrintInfo *nfo, bool create) {
 	PrState *ps = r_list_last (nfo->outstack);
 	r_return_val_if_fail (ps, NULL);
@@ -85,6 +87,7 @@ static inline PrState *printer_push_state(PrintInfo *nfo, bool prepend) {
 }
 
 static bool printer_pop_state(PrintInfo *nfo) {
+	r_return_val_if_fail (nfo->outstack && r_list_length (nfo->outstack), false);
 	PrState *ps = r_list_pop (nfo->outstack);
 	r_return_val_if_fail (ps, false);
 	bool ret = true;
@@ -211,23 +214,6 @@ static bool iter_get_wrap(PyType t, char **start, char **end) {
 	return false;
 }
 
-// prepend nfo->out with obj declaration, then write obj name
-static inline bool prepend_obj(PrintInfo *nfo, PyObj *obj) {
-	r_return_val_if_fail (!PSTATE (nfo, first), false);
-	PrState *ps = printer_push_state (nfo, true);
-	if (ps) {
-		// prepends always start the line, never return
-		ps->first = true;
-		ps->ret = false;
-		ps->out = NULL;
-		ps->tabs = 0;
-		if (dump_obj (nfo, obj) && printer_pop_state (nfo)) {
-			return PCOLORSTR (obj->varname, func_var);
-		}
-	}
-	return false;
-}
-
 static inline bool obj_has_reduce(PyObj *obj) {
 	switch (obj->type) {
 	case PY_REDUCE:
@@ -350,6 +336,8 @@ static inline bool dump_reduce(PrintInfo *nfo, PyObj *obj) {
 	}
 	ps->first = false;
 	ps->ret = false;
+	PyObj *oldred = nfo->reduce;
+	nfo->reduce = obj;
 
 	// HACK: artificially inflate to ensure it gets a variable, do not return without fixing
 	obj->reduce.glob->refcnt++;
@@ -363,6 +351,7 @@ static inline bool dump_reduce(PrintInfo *nfo, PyObj *obj) {
 		ret = ret && dump_obj (nfo, obj->reduce.args);
 	}
 	obj->reduce.resolved = nfo->recurse;
+	nfo->reduce = oldred;
 	obj->reduce.glob->refcnt--;
 	return printer_pop_state (nfo) && ret && newline (nfo);
 }
@@ -748,42 +737,88 @@ static inline bool dump_oper(PrintInfo *nfo, PyOper *pop, const char *vn) {
 // is this what currently completely printed?
 static inline bool what_completed(PrintInfo *nfo, PyObj *obj) {
 	bool ret = false;
-	if (obj->varname && obj->iter_next) {
+	if (obj->varname) {
+		if (!obj->iter_next) {
+			return true;
+		}
 		PyOper *pop = r_list_iter_get_data (obj->iter_next);
 		ret = pop->op != OP_FAKE_SPLIT // recurred on self, don't expand while internal
-			|| !r_list_iter_get_next (obj->iter_next) // SPLIT but nothing after, we are done 
+			|| !r_list_iter_get_next (obj->iter_next) // SPLIT but nothing after, we are done
 			|| !split_is_resolved (nfo, pop->obj); // SPLIT but not resolved, no more to print
 	}
 	return ret;
 }
 
-static inline bool what_split_stop(PrintInfo *nfo, PyObj *what) {
+static inline int what_purge_intermediate(PrintInfo *nfo, PyObj *what) {
+	RListIter *iter = what->iter_next;
+	RListIter *purge_to;
+	PyOper *pop;
+	r_list_foreach_prev (what->py_what, purge_to, pop) {
+		if (purge_to == iter) {
+			// hit start, nothing to purge, stop
+			return 1;
+		}
+		if (pop->op == OP_FAKE_SPLIT ) {
+			if (pop->obj->split == nfo->reduce || split_is_resolved (nfo, pop->obj)) {
+				break;
+			}
+		}
+	}
+	r_return_val_if_fail (purge_to, 1);
+
+
+	PSTATE (nfo, first) = true;
+	pop = r_list_iter_get_data (iter);
+	if (!dump_obj (nfo, pop->obj->split)) {
+		return -1;
+	}
+	PSTATE (nfo, first) = false;
+	return 0; // continue
+}
+
+// 1 stop
+static inline int what_split_stop(PrintInfo *nfo, PyObj *what) {
 	if (!what->iter_next) { // end
-		return true;
+		return 1; // stop
 	}
 	PyOper *pop = r_list_iter_get_data (what->iter_next);
 	if (pop->op == OP_FAKE_SPLIT) { // not end, but we may have to wait
 		RListIter *next = r_list_iter_get_next (what->iter_next);
-		if (!next || !split_is_resolved (nfo, pop->obj)) {
-			return true;
+		if (!next) {
+			return 1; // stop
+		}
+
+		if (!split_is_resolved (nfo, pop->obj)) {
+			if (nfo->reduce == pop->obj->split) {
+				return 1;
+			}
+			// unresolved split does not corespond to the current reduce being printed
+			// check if an intermediate reduce was popped
+			int ret = what_purge_intermediate (nfo, what);
+			if (ret) {
+				return ret;
+			}
 		}
 		what->iter_next = next;  // iter resolved, so we skip it
 	}
-	return false;
+	return 0; // continue
 }
 
 static inline bool what_loop(PrintInfo *nfo, PyObj *what) {
 	if (!what->iter_next) {
 		what->iter_next = r_list_head (what->py_iter);
 	}
-	while (!what_split_stop (nfo, what)) {
+	for (;;) {
+		int ret = what_split_stop (nfo, what);
+		if (ret) {
+			return ret < 0? false: true;
+		}
 		PyOper *pop = r_list_iter_get_data (what->iter_next);
 		what->iter_next = r_list_iter_get_next (what->iter_next);
 		if (!dump_oper (nfo, pop, what->varname)) {
 			return false;
 		}
 	}
-	return true;
 }
 
 static inline bool dump_what(PrintInfo *nfo, PyObj *what) {
@@ -810,18 +845,14 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *what) {
 
 	if (!ps->first) {
 		return printer_appendf (nfo, "%s%s%s", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
-	} 
+	}
 	if (ps->ret){
 		return printer_appendf (nfo, "return %s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
 	}
 	return true;
 }
 
-bool dump_obj(PrintInfo *nfo, PyObj *obj) {
-	if (!PSTATE (nfo, first) && obj->refcnt) {
-		return prepend_obj (nfo, obj);
-	}
-
+bool dump_obj_no_pre(PrintInfo *nfo, PyObj *obj) {
 	switch (obj->type) {
 	case PY_BOOL:
 		return dump_bool (nfo, obj);
@@ -853,8 +884,30 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 		return dump_what (nfo, obj);
 	default:
 		R_LOG_ERROR ("Python dumper can't handle type `%s` yet", py_type_to_name(obj->type))
+		return false;
 	}
-	return false;
+}
+
+bool dump_obj(PrintInfo *nfo, PyObj *obj) {
+	PrState *ps = NULL;
+	if (!PSTATE (nfo, first) && obj->refcnt) {
+		ps = printer_push_state (nfo, true);
+		if (!ps) {
+			return false;
+		}
+		// prepends always start the line, never return
+		ps->first = true;
+		ps->ret = false;
+		ps->tabs = 0;
+	}
+
+	bool ret = dump_obj_no_pre (nfo, obj);
+	if (ps) {
+		ret = ret
+			&& printer_pop_state (nfo)
+			&& PCOLORSTR (obj->varname, func_var);
+	}
+	return ret;
 }
 
 static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
@@ -867,6 +920,7 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 	PyObj *obj;
 	printer_appendf (nfo, "%s## %s stack start, len %d%s\n", PALCOLOR (usercomment), n, len, PALCOLOR (reset));
 	PrState *ps = r_list_last (nfo->outstack);
+	ps->ret = false;
 	r_return_val_if_fail (ps, false);
 	r_list_foreach (stack, iter, obj) {
 		len--;
@@ -917,7 +971,6 @@ bool print_info_init(PrintInfo *nfo, ut64 recurse, RCore *core) {
 		}
 	}
 	nfo->recurse = recurse;
-	nfo->reduce_off = UT64_MAX;
 	nfo->outstack = r_list_newf ((RListFree) pstate_free);
 	printer_push_state (nfo, false); // init print state
 	return nfo->outstack? true: false;

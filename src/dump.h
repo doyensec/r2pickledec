@@ -12,10 +12,11 @@ typedef struct print_state {
 typedef struct print_info {
 	bool stack, popstack, metastack; // input from user
 
+	PyObj *reduce;
+
 	bool stack_start; // first on stack
 	RConsPrintablePalette *pal;
 
-	ut64 reduce_off;
 	ut64 recurse;
 	bool verbose;
 
