@@ -7,8 +7,6 @@
 
 #define TAB "\t"
 
-static void py_obj_free_internal(PyObj *obj, RListFree obj_free);
-
 static const char *help_msg[] = {
 	"Usage:", "pdP[j]", "Decompile python pickle",
 	"pdP", "", "Decompile python pickle until STOP, eof or bad opcode",
@@ -16,140 +14,16 @@ static const char *help_msg[] = {
 	NULL
 };
 
-static inline void list_free_with(RList *l, RListFree f) {
-	if (l) {
-		l->free = f;
-		r_list_free (l);
-	}
-}
-
-/*
- * Note about free usage:
- * Typically one would check an objects reference count before free'ing any
- * part of an object. This is how `py_obj_free` and `pyop_free` operate.
- *
- * Consider though the following pickle:
- * ```
- * empty_list
- * dup
- * append
- * stop
- * ```
- * This creates the valid python object `[[...]]`, a list containing itself.
- * Such an element will have two references to it. One from the stack, one from
- * itself. So free'ing the object off the stack with py_obj_free would
- * decrement the refcount only once, and result in a leak. Checking for self
- * reference would require another round of recursion and slow things down.
- *
- * Functions pyop_deep_free and py_obj_deep_free will free all of an objects
- * internal pointers first. Then the reference count is decremented and checked
- * to see if the outer object should be free'd. This won't leak, even for
- * elements that self reference. Ensuring all pointers of an object are NULL'd
- * before free'ing the pointer itself, will prevent double-free's.
- *
- * Why both? A legitimate pickle can have a lot of memos. These are free'd with
- * py_obj_free BEFORE processing the AST into json or pseudocode. If you used
- * deep free, to free the memos, it would corrupt the AST. You can't leak by
- * using py_obj_free because an object that is referenced by the memo, must
- * also be referenced by one of the stacks. So doing a deep free on the stacks
- * will ensure there are no leaks.
- */
-
-static void py_obj_free(PyObj *obj) {
-	if (obj && obj->refcnt-- <= 0) {
-		py_obj_free_internal (obj, (RListFree)py_obj_free);
-		free (obj);
-	}
-}
-
-static void py_obj_deep_free(PyObj *obj) {
-	if (obj) {
-		py_obj_free_internal (obj, (RListFree)py_obj_deep_free);
-		if (obj->refcnt-- <= 0) {
-			free (obj);
-		}
-	}
-}
-
 static void pyop_free(PyOper *pop) {
 	if (pop) {
-		void *tmp;
 		switch (pop->op) {
 		case OP_FAKE_INIT:
 		case OP_FAKE_SPLIT:
-			tmp = pop->obj;
-			pop->obj = NULL;
+			break;
 		default:
-			tmp = pop->stack;
-			pop->stack = NULL;
-			list_free_with (tmp, (RListFree)py_obj_free);
+			r_list_free (pop->stack);
 		}
 		free (pop);
-	}
-}
-
-static inline void py_reduce_free(PyObj *obj, RListFree obj_free) {
-	PyObj *glob = obj->reduce.glob;
-	PyObj *args = obj->reduce.args;
-	PyObj *kwargs = obj->reduce.kwargs;
-	memset (&obj->reduce, 0, sizeof (obj->reduce));
-	obj_free (glob);
-	obj_free (args);
-	obj_free (kwargs);
-}
-
-static void py_obj_free_internal(PyObj *obj, RListFree obj_free) {
-	void *tmp;
-
-	free (obj->varname);
-	obj->varname = NULL;
-	switch (obj->type) {
-	case PY_BOOL:
-	case PY_INT:
-	case PY_FLOAT:
-	case PY_NONE:
-		break;
-	case PY_STR:
-		free ((void *)obj->py_str);
-		obj->py_str = NULL;
-		break;
-	case PY_INST:
-	case PY_REDUCE:
-	case PY_NEWOBJ:
-		py_reduce_free (obj, obj_free);
-		break;
-	case PY_SET:
-	case PY_FROZEN_SET:
-	case PY_DICT:
-	case PY_LIST:
-	case PY_TUPLE:
-		tmp = obj->py_iter;
-		obj->py_what = NULL;
-		list_free_with (tmp, obj_free);
-		break;
-	case PY_SPLIT:
-		tmp = obj->split;
-		obj->split = NULL;
-		obj_free (tmp);
-		break;
-	case PY_GLOB:
-	{
-		void *tmpa = obj->py_glob.module;
-		tmp = obj->py_glob.name;
-		obj->py_glob.module = NULL;
-		obj->py_glob.name = NULL;
-		obj_free (tmp);
-		obj_free (tmpa);
-		break;
-	}
-	case PY_WHAT:
-		tmp = obj->py_what;
-		obj->py_what = NULL;
-		r_list_free (tmp);
-		break;
-	default:
-		R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
-		break;
 	}
 }
 
@@ -158,22 +32,53 @@ static inline void empty_memo(PMState *pvm) {
 	pvm->memo = NULL;
 }
 
-static void metastack_deep_free(RList *l) {
-	list_free_with (l, (RListFree)py_obj_deep_free);
+static void py_obj_free(PyObj *obj) {
+	if (obj) {
+		free (obj->varname);
+		switch (obj->type) {
+		case PY_BOOL:
+		case PY_INT:
+		case PY_FLOAT:
+		case PY_NONE:
+		case PY_INST:
+		case PY_REDUCE:
+		case PY_NEWOBJ:
+		case PY_GLOB:
+		case PY_SPLIT:
+			break;
+		case PY_STR:
+			free ((void *)obj->py_str);
+			obj->py_str = NULL;
+			break;
+		case PY_SET:
+		case PY_FROZEN_SET:
+		case PY_DICT:
+		case PY_LIST:
+		case PY_TUPLE:
+			r_list_free (obj->py_iter);
+			break;
+		case PY_WHAT:
+			r_list_free (obj->py_what);
+			break;
+		default:
+			R_LOG_ERROR ("Don't know how to free type %s (%d)", py_type_to_name (obj->type), obj->type);
+			break;
+		}
+		free (obj);
+	}
 }
 
 static inline void empty_state(PMState *pvm) {
 	empty_memo (pvm);
-	list_free_with (pvm->stack, (RListFree)py_obj_deep_free);
-	pvm->stack = NULL;
-	list_free_with (pvm->metastack, (RListFree)metastack_deep_free);
-	pvm->metastack = NULL;
-	list_free_with (pvm->popstack, (RListFree)py_obj_deep_free);
-	pvm->popstack = NULL;
-}
-
-static void _kv_free(HtUPKv *kv) {
-	py_obj_free (kv->value);
+	r_list_free (pvm->stack);
+	r_list_free (pvm->metastack);
+	r_list_free (pvm->popstack);
+	PyObj *obj = pvm->free_obj;
+	while (obj) {
+		PyObj *tmp = obj->next_free;
+		py_obj_free (obj);
+		obj = tmp;
+	}
 }
 
 static inline bool init_machine_state(RCore *c, PMState *pvm) {
@@ -186,10 +91,10 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 	pvm->verbose = r_config_get_b (c->config, "anal.verbose");
 
 	// allocs
-	pvm->stack = r_list_newf ((RListFree) py_obj_free);
-	pvm->popstack = r_list_newf ((RListFree) py_obj_free);
+	pvm->stack = r_list_new ();
+	pvm->popstack = r_list_new ();
 	pvm->metastack = r_list_newf ((RListFree) r_list_free);
-	pvm->memo = ht_up_new (NULL, _kv_free, NULL);
+	pvm->memo = ht_up_new (NULL, NULL, NULL);
 
 	if (!pvm->stack || !pvm->memo || !pvm->metastack) {
 		return false;
@@ -201,6 +106,11 @@ static inline bool init_machine_state(RCore *c, PMState *pvm) {
 static inline PyObj *py_obj_new(PMState *pvm, PyType type) {
 	PyObj *obj = R_NEW0 (PyObj);
 	if (obj) {
+		// every new pyobj goes in single linked list, so it should only be
+		// free'd when pvm is emptied
+		obj->next_free = pvm->free_obj;
+		pvm->free_obj = obj;
+
 		obj->type = type;
 		obj->offset = pvm->offset;
 		obj->memo_id = UT64_MAX;
@@ -228,7 +138,7 @@ static inline PyOper *py_oper_new(PMState *pvm, PyOp op, bool initlist) {
 	if (pop) {
 		pop->offset = pvm->offset;
 		pop->op = op;
-		pop->stack = initlist? r_list_newf ((RListFree) py_obj_free): NULL;
+		pop->stack = initlist? r_list_new (): NULL;
 		if (!initlist || pop->stack) {
 			return pop;
 		}
@@ -240,7 +150,7 @@ static inline PyOper *py_oper_new(PMState *pvm, PyOp op, bool initlist) {
 static inline bool py_what_new(PMState *pvm, PyObj *obj) {
 	// obj becomes a PY_WHAT, so ALL references must also.
 	// This means keeping same pointer, but replacing internals
-	PyObj *pinit = R_NEW (PyObj);
+	PyObj *pinit = py_obj_new (pvm, PY_NOT_RIGHT);
 	PyOper *pop = py_oper_new (pvm, OP_FAKE_INIT, false);
 	RList *l = r_list_newf ((RListFree)pyop_free);
 
@@ -260,7 +170,6 @@ static inline bool py_what_new(PMState *pvm, PyObj *obj) {
 	}
 	r_list_free (l);
 	pyop_free (pop);
-	py_obj_free (pinit);
 	return false;
 }
 
@@ -294,7 +203,7 @@ static inline bool py_what_addop_stack(PMState *pvm, PyOp op) {
 }
 
 static inline RList *list_pop_n(RList *list, int n) {
-	RList *ret = r_list_newf ((RListFree)py_obj_free);
+	RList *ret = r_list_new ();
 	if (ret && r_list_length (list) > n) {
 		int i;
 		for (i = 0; i < n; i++) {
@@ -311,11 +220,10 @@ static inline bool itter_add_split(PMState *pvm, RList *list, PyObj *split) {
 	PyObj *obj = r_list_last (list);
 	if (obj && obj->type == PY_SPLIT) {
 		// No need for two splits in the row, keep the later split
-		py_obj_free (r_list_pop (list));
+		r_list_pop (list);
 	}
 
 	if (r_list_append (list, split)) {
-		split->refcnt++;
 		return true;
 	}
 	return false;
@@ -361,7 +269,6 @@ static inline bool split_what_recures(PMState *pvm, RList *list, PyObj *split) {
 	pop = py_oper_new (pvm, OP_FAKE_SPLIT, false);
 	if (pop && r_list_push (list, pop)) {
 		pop->obj = split;
-		split->refcnt++;
 		return true;
 	}
 
@@ -397,10 +304,8 @@ static inline bool split_reduce(PMState *pvm, PyObj *obj) {
 	PyObj *split = py_obj_new (pvm, PY_SPLIT);
 	if (split) {
 		split->split = obj;
-		obj->refcnt++;
 		pvm->recurse++;
 		bool ret = add_splits (pvm, obj->reduce.args, split);
-		py_obj_free (split);
 		return ret;
 	}
 	return false;
@@ -438,7 +343,6 @@ static inline bool memo_put(PMState *pvm, st64 loc) {
 			R_LOG_DEBUG ("\t[++] Memoid %d of %u is %p", loc, pvm->memo->count, obj);
 			return true;
 		}
-		py_obj_free (obj);
 	}
 	return false;
 }
@@ -472,11 +376,10 @@ static inline PyObj *py_iter_new(PMState *pvm, PyType type) {
 	r_return_val_if_fail (pytype_has_depth (type), NULL);
 	PyObj *obj = py_obj_new (pvm, type);
 	if (obj) {
-		obj->py_iter = r_list_newf ((RListFree)py_obj_free);
+		obj->py_iter = r_list_new ();
 		if (obj->py_iter) {
 			return obj;
 		}
-		py_obj_free (obj);
 	}
 	return NULL;
 }
@@ -506,7 +409,6 @@ static inline bool op_newbool(PMState *pvm, bool py_bool) {
 		obj->py_bool = py_bool;
 		return true;
 	}
-	py_obj_free (obj);
 	return false;
 }
 
@@ -515,7 +417,6 @@ static inline PyObj *iter_to_mark(PMState *pvm, PyType t) {
 	if (obj && py_iter_append_mark (pvm, obj, t)) {
 		return obj;
 	}
-	py_obj_free (obj);
 	return NULL;
 }
 
@@ -524,7 +425,6 @@ static inline bool op_type_create_append(PMState *pvm, PyType t) {
 	if (obj && r_list_append (pvm->stack, obj)) {
 		return true;
 	}
-	py_obj_free (obj);
 	return false;
 }
 
@@ -540,14 +440,12 @@ static inline bool op_iter_n(PMState *pvm, int n, PyType type) {
 			}
 
 			if (!r_list_prepend (obj->py_iter, o)) {
-				py_obj_free (obj);
 				return false;
 			}
 		}
 		if (r_list_push (pvm->stack, obj)) {
 			return true;
 		}
-		py_obj_free (obj);
 	}
 	return false;
 }
@@ -587,9 +485,7 @@ static inline bool op_append(PMState *pvm) {
 				return true;
 			}
 			// failed, try to restore state
-			if (!r_list_push (pvm->stack, obj)) {
-				py_obj_free (obj);
-			}
+			r_list_push (pvm->stack, obj);
 		}
 	}
 	return false;
@@ -634,8 +530,6 @@ static inline bool op_setitem(PMState *pvm) {
 				r_warn_if_reached ();
 			}
 		}
-		py_obj_free (key);
-		py_obj_free (value);
 	}
 	return false;
 }
@@ -688,7 +582,6 @@ static inline bool push_int_type(PMState *pvm, RAnalOp *op) {
 		if (r_list_push (pvm->stack, obj)) {
 			return true;
 		}
-		py_obj_free (obj);
 	}
 	return false;
 }
@@ -703,7 +596,6 @@ static inline bool op_float(PMState *pvm, RAnalOp *op, bool quoted) {
 				return true;
 			}
 		}
-		py_obj_free (obj);
 	}
 	return false;
 }
@@ -730,13 +622,12 @@ static inline bool push_str(RCore *c, PMState *pvm, RAnalOp *op) {
 			return true;
 		}
 	}
-	py_obj_free (obj);
 	free (str);
 	return false;
 }
 
 static inline bool op_mark(PMState *pvm) {
-	RList *new_stack = r_list_newf ((RListFree)py_obj_free);
+	RList *new_stack = r_list_new ();
 	if (new_stack && r_list_append (pvm->metastack, pvm->stack)) {
 		pvm->stack = new_stack;
 		return true;
@@ -772,7 +663,6 @@ static inline PyObj *str_to_pystr(PMState *pvm, const char *str) {
 			return obj;
 		}
 	}
-	py_obj_free (obj);
 	return false;
 }
 
@@ -797,7 +687,6 @@ static inline PyObj *glob_obj(PMState *pvm, RAnalOp *op) {
 	if (obj && split_module_str (pvm, op, &obj->py_glob)) {
 		return obj;
 	}
-	py_obj_free (obj);
 	return NULL;
 }
 
@@ -819,7 +708,6 @@ static inline bool op_stack_global(PMState *pvm, RAnalOp *op) {
 			if (func->name && func->module && r_list_push (pvm->stack, obj)) {
 				return true;
 			}
-			py_obj_free (obj);
 		}
 	}
 	return false;
@@ -835,9 +723,6 @@ static inline bool insantiate(PMState *pvm, PyObj *klass, PyObj *args) {
 		}
 		args = klass = NULL;
 	}
-	py_obj_free (obj);
-	py_obj_free (args);
-	py_obj_free (klass);
 	return false;
 }
 
@@ -857,7 +742,7 @@ static inline bool op_newobj(PMState *pvm, RAnalOp *op, bool kw) {
 		if (kw) {
 			obj->reduce.kwargs = r_list_pop (pvm->stack);
 			if (!obj->reduce.kwargs) {
-				goto newobj_clean;
+				return false;
 			}
 		}
 		obj->reduce.args = r_list_pop (pvm->stack);
@@ -866,9 +751,6 @@ static inline bool op_newobj(PMState *pvm, RAnalOp *op, bool kw) {
 			return true;
 		}
 	}
-
-newobj_clean:
-	py_obj_free (obj);
 	return false;
 }
 
@@ -888,7 +770,6 @@ static inline bool op_reduce(PMState *pvm, RAnalOp *op) {
 			if (obj->reduce.args && obj->reduce.glob && r_list_push (pvm->stack, obj)) {
 				return split_reduce (pvm, obj);
 			}
-			py_obj_free (obj);
 		}
 	}
 	return false;

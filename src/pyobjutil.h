@@ -97,6 +97,8 @@ typedef enum python_type {
 	// pairs. No overwrites happen, to preserve data that might of been lost
 } PyType;
 
+typedef struct python_object PyObj;
+
 typedef struct pickle_machine_state {
 	RList *stack, *metastack, *popstack;
 	HtUP *memo;
@@ -105,9 +107,9 @@ typedef struct pickle_machine_state {
 	ut64 start, offset, end;
 	bool verbose;
 	ut64 ver;
+	PyObj *free_obj; // single linked free list
 } PMState;
 
-typedef struct python_object PyObj;
 
 typedef struct python_glob {
 	PyObj *module;
@@ -133,7 +135,7 @@ struct python_operator {
 };
 
 struct python_object {
-	int refcnt;
+	int refcnt; // number of times obj is duplicated
 	PyType type;
 	ut64 offset;
 	ut64 memo_id;
@@ -153,6 +155,7 @@ struct python_object {
 		RList /*PyOper**/*py_what; // this object has transcended beyond our
 								   // understanding, just go with it
 	};
+	PyObj *next_free; // all objects are kept in a list to free
 };
 
 const char *py_type_to_name(PyType t);
