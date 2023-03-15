@@ -285,22 +285,45 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	return ret && pj_end (pj)? true: false;
 }
 
+static bool json_dump_metastack(PJ *pj, RList *meta, RList *path) {
+	if (!r_list_length (meta)) {
+		return true;
+	}
+	bool ret = path_push (path, strdup("metastack"))
+		&& pj_k (pj, "metastack")
+		&& pj_a (pj);
+
+	if (ret) {
+		int i = 0;
+		RList *l;
+		RListIter *iter;
+		r_list_foreach(meta, iter, l) {
+			ret = path_push (path, r_str_newf ("[%d]", i++))
+				&& pj_list (pj, l, path)
+				&& path_pop (path);
+			if (!ret) {
+				break;
+			}
+		}
+	}
+	return path_pop (path) && pj_end (pj) && ret;
+}
+
 bool json_dump_state(PJ *pj, PMState *pvm) {
 	r_return_val_if_fail (pj && pvm, false);
 	RList *path = r_list_newf (free);
-	if (
-		path
-		&& pj_o (pj) // open initial object
-		&& pj_klist (pj, "stack", pvm->stack, path)
-		&& pj_klist (pj, "popstack", pvm->popstack, path)
-		&& pj_end (pj)
-	) {
-		if (r_list_length (path)) {
+	bool ret = false;
+	if (path) {
+		ret = pj_o (pj) // open initial object
+			&& json_dump_metastack (pj, pvm->metastack, path)
+			&& pj_klist (pj, "stack", pvm->stack, path)
+			&& pj_klist (pj, "popstack", pvm->popstack, path)
+			&& pj_end (pj);
+
+		if (ret && r_list_length (path)) {
 			r_warn_if_reached ();
 		}
-		r_list_free (path);
-		return true;
 	}
 	r_list_free (path);
-	return false;
+	return ret;
 }
