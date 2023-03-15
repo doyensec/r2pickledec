@@ -942,10 +942,27 @@ static inline bool dump_stack(PrintInfo *nfo, RList *stack, const char *n) {
 bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 	bool ret = true;
 	if (nfo->stack) {
-		ret &= dump_stack (nfo, pvm->stack, "VM");
+		if (r_list_length (pvm->metastack)) {
+			RList *l;
+			RListIter *iter;
+			int i = r_list_length (pvm->metastack);
+			r_list_foreach (pvm->metastack, iter, l) {
+				char *name = r_str_newf ("METASTACK[%d]", --i);
+				if (!name) {
+					ret = false;
+					break;
+				}
+				ret = dump_stack (nfo, l, name);
+				free (name);
+				if (!ret) {
+					break;
+				}
+			}
+		}
+		ret = ret && dump_stack (nfo, pvm->stack, "VM");
 	}
-	if (nfo->popstack && r_list_length (pvm->popstack)) {
-		ret &= dump_stack (nfo, pvm->popstack, "POP");
+	if (ret && nfo->popstack && r_list_length (pvm->popstack)) {
+		ret = ret && dump_stack (nfo, pvm->popstack, "POP");
 	}
 	printer_pop_state (nfo);
 	if (!ret || warn) {
