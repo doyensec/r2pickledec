@@ -304,6 +304,7 @@ static inline bool split_reduce(PMState *pvm, PyObj *obj) {
 	PyObj *split = py_obj_new (pvm, PY_SPLIT);
 	if (split) {
 		split->split = obj;
+		obj->refcnt++;
 		pvm->recurse++;
 		bool ret = add_splits (pvm, obj->reduce.args, split);
 		return ret;
