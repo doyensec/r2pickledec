@@ -109,6 +109,10 @@ static bool printer_pop_state(PrintInfo *nfo) {
 	return ret;
 }
 
+static inline bool printer_append_return(PrintInfo *nfo) {
+	return printer_appendf (nfo, "%sreturn ", PALCOLOR (ret));
+}
+
 static inline char *glob_varname(PyObj *obj) {
 	PyObj *name = obj->py_glob.name;
 	if (name->type == PY_STR) {
@@ -235,7 +239,7 @@ static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 // 0 ok, >0 printed var instead of obj (ie caller is done), <0 error
 static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 	if (PSTATE (nfo, ret)) {
-		if (!printer_append (nfo, "return ")) {
+		if (!printer_append_return (nfo)) { // BUG: last of double return
 			return -1;
 		}
 		if (obj->varname) {
@@ -583,8 +587,8 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
 		ps = r_list_last (nfo->outstack);
 		if (ps->ret) {
 			ps->first = false;
-			ret &= printer_append (nfo, "return ");
 		}
+
 		if (!ret || !printer_push_state (nfo, true)) {
 			return false;
 		}
@@ -847,7 +851,8 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *what) {
 		return printer_appendf (nfo, "%s%s%s", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
 	}
 	if (ps->ret){
-		return printer_appendf (nfo, "return %s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
+		return printer_append_return (nfo)
+			&& printer_appendf (nfo, "%s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
 	}
 	return true;
 }
