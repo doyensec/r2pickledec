@@ -751,7 +751,7 @@ static inline bool what_completed(PrintInfo *nfo, PyObj *obj) {
 
 static inline int what_purge_intermediate(PrintInfo *nfo, PyObj *what) {
 	RListIter *iter = what->iter_next;
-	RListIter *purge_to;
+	RListIter *purge_to = NULL;
 	PyOper *pop;
 	r_list_foreach_prev (what->py_what, purge_to, pop) {
 		if (purge_to == iter) {
