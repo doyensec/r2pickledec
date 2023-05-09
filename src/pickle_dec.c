@@ -37,6 +37,7 @@ static void py_obj_free(PyObj *obj) {
 		free (obj->varname);
 		switch (obj->type) {
 		case PY_BOOL:
+		case PY_EXT:
 		case PY_INT:
 		case PY_FLOAT:
 		case PY_NONE:
@@ -368,6 +369,15 @@ static inline bool op_dup(PMState *pvm) {
 	PyObj *obj = (PyObj *)r_list_last (pvm->stack);
 	if (obj && r_list_push (pvm->stack, obj)) {
 		obj->refcnt++;
+		return true;
+	}
+	return false;
+}
+
+static inline bool op_ext(PMState *pvm, RAnalOp *op) {
+	PyObj *obj = py_obj_new (pvm, PY_EXT);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		obj->py_extnum = op->val;
 		return true;
 	}
 	return false;
@@ -817,7 +827,7 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_UNICODE:
 	case OP_BINUNICODE8:
 	case OP_BINBYTES8:
-	case OP_BYTEARRAY8:
+	case OP_BYTEARRAY8: // proto 5
 	case OP_BINSTRING:
 	case OP_BINUNICODE:
 	case OP_BINBYTES:
@@ -894,6 +904,10 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return memo_get (pvm, op->val);
 	case OP_DUP:
 		return op_dup (pvm);
+	case OP_EXT1:
+	case OP_EXT2:
+	case OP_EXT4:
+		return op_ext (pvm, op);
 
 	// unhandled
 	case OP_INT:
@@ -903,9 +917,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_GET:
 	case OP_PUT:
 	// registry
-	case OP_EXT1:
-	case OP_EXT2:
-	case OP_EXT4:
 	// PROTO 4
 	case OP_NEXT_BUFFER:
 	case OP_READONLY_BUFFER:
@@ -1014,7 +1025,7 @@ static int pickle_dec(void *user, const char *input) {
 		} else {
 			PrintInfo nfo;
 			state.recurse++;
-			if (!print_info_init (&nfo, state.recurse, c) || !dump_machine(&state, &nfo, !pvm_fin)) {
+			if (!print_info_init (&nfo, state.recurse, c) || !dump_machine( &state, &nfo, !pvm_fin)) {
 				R_LOG_ERROR ("Failed to dump pickle");
 			}
 			print_info_clean (&nfo);

@@ -239,6 +239,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	// just the value
 	bool ret = true;
 	switch (obj->type) {
+	case PY_EXT:
+		ret &= pj_N (pj, obj->py_extnum)? true: false;
+		break;
 	case PY_INT:
 		ret &= pj_N (pj, obj->py_int)? true: false;
 		break;

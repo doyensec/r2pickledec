@@ -470,6 +470,15 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":31,"type":"PY_NEWOBJ","value":{"func":{"offset":28,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":19,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]},"kwargs":{"offset":30,"type":"PY_DICT","value":[]}}}],"popstack":[]}'
+    }, {
+       "name" : "ext func",
+       "asm" : """
+            ext1 42
+            empty_tuple
+            reduce
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":3,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_EXT","value":42},"args":{"offset":2,"type":"PY_TUPLE","value":[]}}}],"popstack":[]}'
     }
 ]
 

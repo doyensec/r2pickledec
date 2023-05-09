@@ -137,6 +137,9 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 		case PY_WHAT:
 			obj->varname = r_str_newf ("what_x%" PFMT64x, obj->offset);
 			break;
+		case PY_EXT:
+			obj->varname = r_str_newf ("ext_x%"PFMT64x"_x%"PFMT64x, obj->py_extnum, obj->offset);
+			break;
 		case PY_INT:
 			obj->varname = r_str_newf ("int_%d_x%" PFMT64x, obj->py_int, obj->offset);
 			break;
@@ -301,6 +304,16 @@ static inline bool dump_bool(PrintInfo *nfo, PyObj *obj) {
 	bool ret = printer_append (nfo, obj->py_bool? "True": "False");
 	ret &= newline (nfo);
 	return ret;
+}
+
+static inline bool dump_ext(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	return printer_appendf (
+		  nfo, "%s_inverted_registry%s.%sget%s(%s%d%s)",
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (num), obj->py_extnum, PALCOLOR (reset))
+		&& newline (nfo);
 }
 
 static inline bool dump_int(PrintInfo *nfo, PyObj *obj) {
@@ -861,6 +874,8 @@ bool dump_obj_no_pre(PrintInfo *nfo, PyObj *obj) {
 	switch (obj->type) {
 	case PY_BOOL:
 		return dump_bool (nfo, obj);
+	case PY_EXT:
+		return dump_ext (nfo, obj);
 	case PY_INT:
 		return dump_int (nfo, obj);
 	case PY_STR:
@@ -964,7 +979,11 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 				}
 			}
 		}
-		ret = ret && dump_stack (nfo, pvm->stack, "VM");
+		if (r_list_length (pvm->stack) > 0) {
+			ret = ret && dump_stack (nfo, pvm->stack, "VM");
+		} else {
+			printf ("%s## stack is empty%s\n", PALCOLOR (usercomment), PALCOLOR (reset));
+		}
 	}
 	if (ret && nfo->popstack && r_list_length (pvm->popstack)) {
 		ret = ret && dump_stack (nfo, pvm->popstack, "POP");
