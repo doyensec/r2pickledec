@@ -110,7 +110,7 @@ static bool printer_pop_state(PrintInfo *nfo) {
 }
 
 static inline bool printer_append_return(PrintInfo *nfo) {
-	return printer_appendf (nfo, "%sreturn ", PALCOLOR (ret));
+	return printer_appendf (nfo, "%sreturn%s ", PALCOLOR (ret), PALCOLOR (reset));
 }
 
 static inline char *glob_varname(PyObj *obj) {

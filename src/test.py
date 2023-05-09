@@ -505,6 +505,13 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":1,"type":"PY_BUFFER_RO","value":{"offset":0,"type":"PY_BUFFER","value":0}}],"popstack":[]}'
+    }, {
+       "name" : "int basic",
+       "asm" : """
+            int "42"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"builtins"},"name":{"offset":0,"type":"PY_STR","value":"int"}}},"args":{"offset":0,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_STR","value":"42"}]}}}],"popstack":[]}'
     }
 ]
 
