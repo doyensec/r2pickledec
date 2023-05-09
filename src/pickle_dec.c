@@ -46,6 +46,7 @@ static void py_obj_free(PyObj *obj) {
 		case PY_NEWOBJ:
 		case PY_GLOB:
 		case PY_SPLIT:
+		case PY_PERSID:
 			break;
 		case PY_STR:
 			free ((void *)obj->py_str);
@@ -380,6 +381,27 @@ static inline bool op_ext(PMState *pvm, RAnalOp *op) {
 		obj->py_extnum = op->val;
 		return true;
 	}
+	return false;
+}
+
+static inline bool make_persid(PMState *pvm, PyObj *pid) {
+	PyObj *obj = py_obj_new (pvm, PY_PERSID);
+	if (pid && obj) {
+		obj->py_pid = pid;
+		if (r_list_push (pvm->stack, obj)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// expects to take a number off the stack
+static inline bool op_binpersid(PMState *pvm) {
+	PyObj *pid = r_list_pop (pvm->stack);
+	if (pid) {
+		return make_persid (pvm, pid);
+	}
+	R_LOG_INFO ("[0x%"PFMT64x"] binpersid failed to get stack", pvm->offset);
 	return false;
 }
 
@@ -908,18 +930,19 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_EXT2:
 	case OP_EXT4:
 		return op_ext (pvm, op);
+	case OP_BINPERSID:
+		return op_binpersid (pvm);
 
 	// unhandled
+	case OP_NEXT_BUFFER: // proto 5, C stuff
+	case OP_READONLY_BUFFER: // proto 5, C stuff
+
+	// all use string type numbers
 	case OP_INT:
 	case OP_LONG:
 	case OP_PERSID:
-	case OP_BINPERSID:
 	case OP_GET:
 	case OP_PUT:
-	// registry
-	// PROTO 4
-	case OP_NEXT_BUFFER:
-	case OP_READONLY_BUFFER:
 
 	default:
 		if (op->type != R_ANAL_OP_TYPE_ILL) {

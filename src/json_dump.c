@@ -257,6 +257,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_GLOB:
 		ret &= py_glob (pj, obj, path);
 		break;
+	case PY_PERSID:
+		ret &= py_obj (pj, obj->py_pid, path);
+		break;
 	case PY_NEWOBJ:
 	case PY_INST:
 	case PY_REDUCE:

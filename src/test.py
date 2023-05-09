@@ -479,6 +479,14 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":3,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_EXT","value":42},"args":{"offset":2,"type":"PY_TUPLE","value":[]}}}],"popstack":[]}'
+    }, {
+       "name" : "basic persid",
+       "asm" : """
+            binint1 42
+            binpersid
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_PERSID","value":{"offset":0,"type":"PY_INT","value":42}}],"popstack":[]}'
     }
 ]
 
