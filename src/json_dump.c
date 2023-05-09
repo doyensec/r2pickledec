@@ -274,6 +274,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_SPLIT:
 		ret &= py_obj (pj, obj->split, path);
 		break;
+	case PY_BUFFER_RO:
+		ret &= py_obj (pj, obj->py_robuf, path);
+		break;
 	case PY_FROZEN_SET:
 	case PY_SET:
 	case PY_LIST:

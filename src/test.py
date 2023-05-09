@@ -497,6 +497,14 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":18,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"builtins"},"name":{"offset":0,"type":"PY_STR","value":"print"}}},"args":{"offset":17,"type":"PY_TUPLE","value":[{"offset":16,"type":"PY_BUFFER","value":0}]}}}],"popstack":[]}'
+    }, {
+       "name" : "readonly buffer",
+       "asm" : """
+            next_buffer
+            readonly_buffer
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":1,"type":"PY_BUFFER_RO","value":{"offset":0,"type":"PY_BUFFER","value":0}}],"popstack":[]}'
     }
 ]
 

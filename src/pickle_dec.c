@@ -48,6 +48,7 @@ static void py_obj_free(PyObj *obj) {
 		case PY_SPLIT:
 		case PY_PERSID:
 		case PY_BUFFER:
+		case PY_BUFFER_RO:
 			break;
 		case PY_STR:
 			free ((void *)obj->py_str);
@@ -411,6 +412,19 @@ static inline bool op_next_buffer(PMState *pvm) {
 	if (obj && r_list_push (pvm->stack, obj)) {
 		obj->py_bufi = pvm->buffernum++;
 		return true;
+	}
+	return false;
+}
+
+static inline bool op_readonly_buffer(PMState *pvm) {
+	PyObj *obj = py_obj_new (pvm, PY_BUFFER_RO);
+	PyObj *buf = r_list_pop (pvm->stack);
+	if (obj && buf && r_list_push (pvm->stack, obj)) {
+		obj->py_robuf = buf;
+		return true;
+	}
+	if (buf) {
+		r_list_push (pvm->stack, buf); // try to fix stack to simplify debugging of pickle
 	}
 	return false;
 }
@@ -944,9 +958,10 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_binpersid (pvm);
 	case OP_NEXT_BUFFER: // proto 5, C stuff
 		return op_next_buffer (pvm);
+	case OP_READONLY_BUFFER: // proto 5, C stuff
+		return op_readonly_buffer (pvm);
 
 	// unhandled
-	case OP_READONLY_BUFFER: // proto 5, C stuff
 
 	// all use string type numbers
 	case OP_INT:
