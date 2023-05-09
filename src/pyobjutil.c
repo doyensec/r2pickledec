@@ -39,6 +39,8 @@ const char *py_type_to_name(PyType t) {
 		return "PY_SPLIT"; // maybe should error?
 	case PY_PERSID:
 		return "PY_PERSID";
+	case PY_BUFFER:
+		return "PY_BUFFER";
 	case PY_NOT_RIGHT:
 	default:
 		r_warn_if_reached ();

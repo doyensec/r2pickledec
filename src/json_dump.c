@@ -242,6 +242,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_EXT:
 		ret &= pj_N (pj, obj->py_extnum)? true: false;
 		break;
+	case PY_BUFFER:
+		ret &= pj_N (pj, obj->py_bufi)? true: false;
+		break;
 	case PY_INT:
 		ret &= pj_N (pj, obj->py_int)? true: false;
 		break;

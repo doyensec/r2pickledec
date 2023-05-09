@@ -186,6 +186,9 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 		case PY_PERSID:
 			obj->varname = r_str_newf ("persid_x%" PFMT64x, obj->offset);
 			break;
+		case PY_BUFFER:
+			obj->varname = r_str_newf ("buf_x%" PFMT64x, obj->offset);
+			break;
 		case PY_SPLIT:
 		case PY_NOT_RIGHT:
 			obj->varname = r_str_newf ("META_x%" PFMT64x, obj->offset);
@@ -332,6 +335,14 @@ static inline bool dump_persid(PrintInfo *nfo, PyObj *obj) {
 		&& dump_obj (nfo, obj->py_pid)
 		&& printer_appendf (nfo, ")")
 		&& printer_pop_state (nfo)
+		&& newline (nfo);
+}
+
+static inline bool dump_buf(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	return  printer_appendf (nfo, "%spickle_buffer_at%s(%s0x%"PFMT64x"%s)",
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (num), obj->py_bufi, PALCOLOR (reset))
 		&& newline (nfo);
 }
 
@@ -897,6 +908,8 @@ bool dump_obj_no_pre(PrintInfo *nfo, PyObj *obj) {
 		return dump_ext (nfo, obj);
 	case PY_PERSID:
 		return dump_persid (nfo, obj);
+	case PY_BUFFER:
+		return dump_buf (nfo, obj);
 	case PY_INT:
 		return dump_int (nfo, obj);
 	case PY_STR:

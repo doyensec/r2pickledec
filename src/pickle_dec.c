@@ -47,6 +47,7 @@ static void py_obj_free(PyObj *obj) {
 		case PY_GLOB:
 		case PY_SPLIT:
 		case PY_PERSID:
+		case PY_BUFFER:
 			break;
 		case PY_STR:
 			free ((void *)obj->py_str);
@@ -402,6 +403,15 @@ static inline bool op_binpersid(PMState *pvm) {
 		return make_persid (pvm, pid);
 	}
 	R_LOG_INFO ("[0x%"PFMT64x"] binpersid failed to get stack", pvm->offset);
+	return false;
+}
+
+static inline bool op_next_buffer(PMState *pvm) {
+	PyObj *obj = py_obj_new (pvm, PY_BUFFER);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		obj->py_bufi = pvm->buffernum++;
+		return true;
+	}
 	return false;
 }
 
@@ -932,9 +942,10 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_ext (pvm, op);
 	case OP_BINPERSID:
 		return op_binpersid (pvm);
+	case OP_NEXT_BUFFER: // proto 5, C stuff
+		return op_next_buffer (pvm);
 
 	// unhandled
-	case OP_NEXT_BUFFER: // proto 5, C stuff
 	case OP_READONLY_BUFFER: // proto 5, C stuff
 
 	// all use string type numbers

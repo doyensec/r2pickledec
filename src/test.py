@@ -487,6 +487,16 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":2,"type":"PY_PERSID","value":{"offset":0,"type":"PY_INT","value":42}}],"popstack":[]}'
+    }, {
+       "name" : "nextbuffer in print",
+       "asm" : """
+            global "builtins print"
+            next_buffer
+            tuple1
+            reduce
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":18,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"builtins"},"name":{"offset":0,"type":"PY_STR","value":"print"}}},"args":{"offset":17,"type":"PY_TUPLE","value":[{"offset":16,"type":"PY_BUFFER","value":0}]}}}],"popstack":[]}'
     }
 ]
 
