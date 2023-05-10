@@ -51,7 +51,7 @@ static void py_obj_free(PyObj *obj) {
 		case PY_BUFFER_RO:
 			break;
 		case PY_STR:
-			free ((void *)obj->py_str);
+			free (obj->py_str);
 			obj->py_str = NULL;
 			break;
 		case PY_SET:
@@ -729,25 +729,19 @@ static inline PyObj *str_to_pystr(PMState *pvm, const char *str) {
 	return false;
 }
 
-/*
- * Rummor is pickles were originally human readable. So opcode `int "42"`
- * encoded the number as a newline terminated string that gets passed to
- * pythons builtin int function.
- *
- * Rather then trying to deal with all the quirks of the int function (as well
- * as float), we treat this op as:
- *  global "builtins int" ;; or float
- *  STRING "42" ;; <- int use to be here
- *  tuple1
- *  reduce
- *
- * TODO: Add a flag to the string type to indicate we know it will be a number
- */
-static inline bool push_int_type_str(RCore *c, PMState *pvm, RAnalOp *op) {
+// last resort, just make it into a call to `int("strnum")`
+static inline bool push_int_type_str(RCore *c, PMState *pvm, RAnalOp *op, bool longg) {
 	// building from ground up
 	PyObj *obj_child = py_obj_newstr (c, pvm, op);
 	if (!obj_child) {
 		return false;
+	}
+	if (longg) {
+		char *str = obj_child->py_str;
+		size_t len = strlen (str);
+		if (len > 0 && str[len - 0] == 'L') {
+			str[len - 1] = '\0';
+		}
 	}
 
 	// put string into tuple
@@ -755,7 +749,16 @@ static inline bool push_int_type_str(RCore *c, PMState *pvm, RAnalOp *op) {
 	if (!obj_parent || !r_list_prepend (obj_parent->py_iter, obj_child)) {
 		return false;
 	}
+	// int opcode uses `int("num", 0)`
+	if (!longg) {
+		PyObj *arg1 = py_obj_new (pvm, PY_INT);
+		if (!arg1 || !r_list_push (obj_parent->py_iter, arg1)) {
+			return false;
+		}
+		arg1->py_int = 0;
+	}
 	obj_child = obj_parent;
+
 
 	// create reduce
 	obj_parent = py_obj_new (pvm, PY_REDUCE);
@@ -775,6 +778,7 @@ static inline bool push_int_type_str(RCore *c, PMState *pvm, RAnalOp *op) {
 		return false;
 	}
 	obj_parent->reduce.glob = obj_child;
+
 
 	return r_list_push (pvm->stack, obj_parent)? true: false;
 }
@@ -798,6 +802,57 @@ static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyGlob *cl) {
 		free (str);
 	}
 	return cl->name && cl->module? true: false;
+}
+
+// set out to the number arg. If it fails it returns false. This could be b/c
+// the string was misunderstood or b/c out of memmory
+static inline bool op_arg_str_to_num(RAnalOp *op, st64 *out, bool longg) {
+	char *str = strchr (op->mnemonic, '"');
+	if (!str) {
+		return false;
+	}
+	str++;
+	char *end = NULL;
+	long long o = strtoll (str, &end, 0);
+	if (longg && *end == 'L') {
+		end++;
+	}
+	if (*end == '"' && o > LLONG_MIN && o < LLONG_MAX) {
+		*out = o;
+		return true;
+	}
+	return false;
+}
+
+static inline bool strnum_try_push(RCore *c, PMState *pvm, RAnalOp *op, bool longg) {
+	st64 val = 0;
+	if (op_arg_str_to_num (op, &val, longg)) {
+		PyObj *obj = py_obj_new (pvm, PY_INT);
+		if (obj && r_list_push (pvm->stack, obj)) {
+			obj->py_int = val;
+			return true;
+		}
+	}
+	return false;
+}
+
+static inline bool op_long(RCore *c, PMState *pvm, RAnalOp *op) {
+	return strnum_try_push (c, pvm, op, true)
+		|| push_int_type_str (c, pvm, op, true);
+}
+
+static inline bool op_int(RCore *c, PMState *pvm, RAnalOp *op) {
+	// this is subtitly a strange opcode...
+	//printf ("op->ptr: %s\n", op->ptr);
+	if (!strcmp ("\"01\"", op->mnemonic + 4)) {
+		return op_newbool (pvm, true);
+	}
+	if (!strcmp ("\"00\"", op->mnemonic + 4)) {
+		return op_newbool (pvm, false);
+	}
+
+	return strnum_try_push (c, pvm, op, false)
+		|| push_int_type_str (c, pvm, op, false);
 }
 
 static inline PyObj *glob_obj(PMState *pvm, RAnalOp *op) {
@@ -931,8 +986,9 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_float (pvm, op, false);
 	// ints again but the bad ones, string encoded...
 	case OP_INT:
+		return op_int (c, pvm, op);
 	case OP_LONG: // same as int, but string arg *should* start with L
-		return push_int_type_str (c, pvm, op);
+		return op_long (c, pvm, op);
 	case OP_PERSID:
 		return op_persid (c, pvm, op);
 	// strings TODO: distinguish between b'', u'', and ''

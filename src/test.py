@@ -511,7 +511,18 @@ tests = [
             int "42"
             stop
        """,
-       "ret" : '{"stack":[{"offset":0,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"builtins"},"name":{"offset":0,"type":"PY_STR","value":"int"}}},"args":{"offset":0,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_STR","value":"42"}]}}}],"popstack":[]}'
+       "ret" : '{"stack":[{"offset":0,"type":"PY_INT","value":42}],"popstack":[]}'
+    }, {
+       "name" : "int basic",
+       "asm" : """
+            int "01"
+            int "00"
+            int "4444444444444444444444444444444444444444444444444444444"
+            int "0x42"
+            long "1"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_BOOL","value":true},{"offset":4,"type":"PY_BOOL","value":false},{"offset":8,"type":"PY_REDUCE","value":{"func":{"offset":8,"type":"PY_GLOB","value":{"module":{"offset":8,"type":"PY_STR","value":"builtins"},"name":{"offset":8,"type":"PY_STR","value":"int"}}},"args":{"offset":8,"type":"PY_TUPLE","value":[{"offset":8,"type":"PY_STR","value":"4444444444444444444444444444444444444444444444444444444"},{"offset":8,"type":"PY_INT","value":0}]}}},{"offset":65,"type":"PY_INT","value":66},{"offset":71,"type":"PY_INT","value":1}],"popstack":[]}'
     }
 ]
 

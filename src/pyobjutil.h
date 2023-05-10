@@ -149,7 +149,7 @@ struct python_object {
 		ut64 py_extnum;
 		ut64 py_bufi; // nextbuffer index to ensure order
 		double py_float;
-		const char *py_str;
+		char *py_str;
 		double py_double;
 		PyRed reduce; // used by PY_INST, PY_REDUCE, PY_NEWOBJ
 		PyObj *split; // points to REDUCE oper that split iter
