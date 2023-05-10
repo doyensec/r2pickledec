@@ -523,6 +523,19 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":0,"type":"PY_BOOL","value":true},{"offset":4,"type":"PY_BOOL","value":false},{"offset":8,"type":"PY_REDUCE","value":{"func":{"offset":8,"type":"PY_GLOB","value":{"module":{"offset":8,"type":"PY_STR","value":"builtins"},"name":{"offset":8,"type":"PY_STR","value":"int"}}},"args":{"offset":8,"type":"PY_TUPLE","value":[{"offset":8,"type":"PY_STR","value":"4444444444444444444444444444444444444444444444444444444"},{"offset":8,"type":"PY_INT","value":0}]}}},{"offset":65,"type":"PY_INT","value":66},{"offset":71,"type":"PY_INT","value":1}],"popstack":[]}'
+    }, {
+       "name" : "get and put",
+       "asm" : """
+            binint1 0
+            memoize
+            binint 42
+            put "44"
+            get "0"
+            binget 44
+            tuple2
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_INT","value":0},{"offset":3,"type":"PY_INT","value":42},{"offset":17,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_INT","prev_seen":".stack[0]"},{"offset":3,"type":"PY_INT","prev_seen":".stack[1]"}]}],"popstack":[]}'
     }
 ]
 

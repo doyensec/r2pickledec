@@ -340,6 +340,26 @@ static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 	return false;
 }
 
+// set out to the number arg. If it fails it returns false. This could be b/c
+// the string was misunderstood or b/c out of memmory
+static inline bool op_arg_str_to_num(RAnalOp *op, st64 *out, bool longg, int base) {
+	char *str = strchr (op->mnemonic, '"');
+	if (!str) {
+		return false;
+	}
+	str++;
+	char *end = NULL;
+	long long o = strtoll (str, &end, base);
+	if (longg && *end == 'L') {
+		end++;
+	}
+	if (*end == '"' && o > LLONG_MIN && o < LLONG_MAX) {
+		*out = o;
+		return true;
+	}
+	return false;
+}
+
 // memo stuff
 static inline bool memo_put(PMState *pvm, st64 loc) {
 	if (loc >= 0) {
@@ -356,6 +376,12 @@ static inline bool op_memorize(PMState *pvm) {
 	return memo_put (pvm, pvm->memo->count);
 }
 
+static inline bool op_put(PMState *pvm, RAnalOp *op) {
+	st64 out;
+	return op_arg_str_to_num (op, &out, false, 10)
+		&& memo_put (pvm, out);
+}
+
 static inline bool memo_get(PMState *pvm, st64 loc) {
 	if (loc >= 0) {
 		PyObj *obj = ht_up_find (pvm->memo, loc, NULL);
@@ -366,6 +392,12 @@ static inline bool memo_get(PMState *pvm, st64 loc) {
 	}
 	R_LOG_ERROR ("Failed memo get %u at 0x%"PFMT64x, loc, pvm->offset);
 	return false;
+}
+
+static inline bool op_get(PMState *pvm, RAnalOp *op) {
+	st64 out;
+	return op_arg_str_to_num (op, &out, false, 10)
+		&& memo_get (pvm, out);
 }
 
 static inline bool op_dup(PMState *pvm) {
@@ -804,29 +836,9 @@ static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyGlob *cl) {
 	return cl->name && cl->module? true: false;
 }
 
-// set out to the number arg. If it fails it returns false. This could be b/c
-// the string was misunderstood or b/c out of memmory
-static inline bool op_arg_str_to_num(RAnalOp *op, st64 *out, bool longg) {
-	char *str = strchr (op->mnemonic, '"');
-	if (!str) {
-		return false;
-	}
-	str++;
-	char *end = NULL;
-	long long o = strtoll (str, &end, 0);
-	if (longg && *end == 'L') {
-		end++;
-	}
-	if (*end == '"' && o > LLONG_MIN && o < LLONG_MAX) {
-		*out = o;
-		return true;
-	}
-	return false;
-}
-
 static inline bool strnum_try_push(RCore *c, PMState *pvm, RAnalOp *op, bool longg) {
 	st64 val = 0;
-	if (op_arg_str_to_num (op, &val, longg)) {
+	if (op_arg_str_to_num (op, &val, longg, longg? 10: 0)) {
 		PyObj *obj = py_obj_new (pvm, PY_INT);
 		if (obj && r_list_push (pvm->stack, obj)) {
 			obj->py_int = val;
@@ -1068,9 +1080,13 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_LONG_BINPUT:
 	case OP_BINPUT:
 		return memo_put (pvm, op->val);
+	case OP_PUT:
+		return op_put (pvm, op);
 	case OP_LONG_BINGET:
 	case OP_BINGET:
 		return memo_get (pvm, op->val);
+	case OP_GET:
+		return op_get (pvm, op);
 	case OP_DUP:
 		return op_dup (pvm);
 	case OP_EXT1:
@@ -1083,13 +1099,6 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_next_buffer (pvm);
 	case OP_READONLY_BUFFER: // proto 5, C stuff
 		return op_readonly_buffer (pvm);
-
-	// unhandled
-
-	// all use string type numbers
-	case OP_GET:
-	case OP_PUT:
-
 	default:
 		if (op->type != R_ANAL_OP_TYPE_ILL) {
 			R_LOG_ERROR ("Can't handle op %02x '%s' yet", code & 0xff, op->mnemonic);
