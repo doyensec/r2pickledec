@@ -2,7 +2,7 @@ CC = gcc
 INSTAL_LOC=~/.local/share/radare2/plugins
 NAME = pickle_dec
 TARGET = $(NAME).so
-CFLAGS = -g -shared -fPIC -Wall $(shell pkg-config --libs --cflags r_core r_util)
+CFLAGS := -fPIC -Wall 
 SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 
@@ -28,10 +28,25 @@ endif
 ALL = $(TARGET)
 
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core r_util) -o $@ $^
 
-asan: CFLAGS+=-fsanitize=address
+pyobjutil.o: pyobjutil.c pyobjutil.h
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core r_util) -o $@ pyobjutil.c
+
+dump.o: pyobjutil.o dump.c
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_util r_config r_cons) -o $@ $^
+
+json_dump.o: pyobjutil.o json_dump.c
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core) -o $@ $^
+
+pickle_dec.o: pyobjutil.o dump.o json_dump.o pickle_dec.c
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core r_util) -o $@ $^
+
+asan: CFLAGS+=-g -fsanitize=address
 asan: $(TARGET)
+
+debug: CFLAGS+=-g
+debug: $(TARGET)
 
 .PHONY: clean install uninstall
 install: $(TARGET)
