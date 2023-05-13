@@ -136,6 +136,7 @@ struct python_operator {
 };
 
 struct python_object {
+	bool noflags; // don't use flags for this object
 	int refcnt; // number of times obj is duplicated
 	PyType type;
 	ut64 offset;

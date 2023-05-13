@@ -34,7 +34,7 @@ pyobjutil.o: pyobjutil.c pyobjutil.h
 	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core r_util) -o $@ pyobjutil.c
 
 dump.o: pyobjutil.o dump.c
-	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_util r_config r_cons) -o $@ $^
+	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_util r_config r_cons r_flag) -o $@ $^
 
 json_dump.o: pyobjutil.o json_dump.c
 	$(CC) -shared $(CFLAGS) $(shell pkg-config --libs --cflags r_core) -o $@ $^

@@ -11,6 +11,7 @@ static const char *help_msg[] = {
 	"Usage:", "pdP[j]", "Decompile python pickle",
 	"pdP", "", "Decompile python pickle until STOP, eof or bad opcode",
 	"pdPj", "", "JSON output",
+	"pdPf", "", "Decompile and set pick.* flags from decompiled var names",
 	NULL
 };
 
@@ -1203,8 +1204,13 @@ static int pickle_dec(void *user, const char *input) {
 		} else {
 			PrintInfo nfo;
 			state.recurse++;
-			if (!print_info_init (&nfo, state.recurse, c) || !dump_machine( &state, &nfo, !pvm_fin)) {
-				R_LOG_ERROR ("Failed to dump pickle");
+			if (print_info_init (&nfo, state.recurse, c)) {
+				nfo.setflags = strchr (input, 'f');
+				if (!dump_machine( &state, &nfo, !pvm_fin)) {
+					R_LOG_ERROR ("Failed to dump pickle");
+				}
+			} else {
+				R_LOG_ERROR ("Failed to init pickle printer state");
 			}
 			print_info_clean (&nfo);
 		}

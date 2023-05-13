@@ -129,6 +129,15 @@ static inline char *glob_varname(PyObj *obj) {
 }
 
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
+	const char *pre = "pick.";
+	if (!obj->noflags && nfo->flags) {
+		RFlagItem *f = r_flag_get_at (nfo->flags,  obj->offset, false);
+		if (f && r_str_startswith (f->name, pre)) {
+			obj->varname = strdup (f->name + strlen (pre));
+			return obj->varname;
+		}
+	}
+
 	if (!obj->varname) {
 		switch (obj->type) {
 		case PY_NONE:
@@ -203,6 +212,15 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 			break;
 		}
 	}
+
+	if (nfo->setflags && nfo->flags) {
+		char *n = r_str_newf ("%s%s", pre, obj->varname);
+		if (n) {
+			r_flag_set (nfo->flags, n, obj->offset, 1);
+			free (n);
+		}
+	}
+
 	return obj->varname;
 }
 
@@ -1065,6 +1083,7 @@ bool print_info_init(PrintInfo *nfo, ut64 recurse, RCore *core) {
 			}
 		}
 	}
+	nfo->flags = core->flags;
 	nfo->recurse = recurse;
 	nfo->outstack = r_list_newf ((RListFree) pstate_free);
 	printer_push_state (nfo, false); // init print state

@@ -14,6 +14,9 @@ typedef struct print_info {
 
 	PyObj *reduce;
 
+	RFlag *flags;
+	bool setflags;
+
 	bool stack_start; // first on stack
 	RConsPrintablePalette *pal;
 
