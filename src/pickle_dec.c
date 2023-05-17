@@ -11,6 +11,7 @@ static const char *help_msg[] = {
 	"Usage:", "pdP[j]", "Decompile python pickle",
 	"pdP", "", "Decompile python pickle until STOP, eof or bad opcode",
 	"pdPj", "", "JSON output",
+	"pdPf", "", "Decompile and set pick.* flags from decompiled var names",
 	NULL
 };
 
@@ -37,6 +38,7 @@ static void py_obj_free(PyObj *obj) {
 		free (obj->varname);
 		switch (obj->type) {
 		case PY_BOOL:
+		case PY_EXT:
 		case PY_INT:
 		case PY_FLOAT:
 		case PY_NONE:
@@ -45,9 +47,12 @@ static void py_obj_free(PyObj *obj) {
 		case PY_NEWOBJ:
 		case PY_GLOB:
 		case PY_SPLIT:
+		case PY_PERSID:
+		case PY_BUFFER:
+		case PY_BUFFER_RO:
 			break;
 		case PY_STR:
-			free ((void *)obj->py_str);
+			free (obj->py_str);
 			obj->py_str = NULL;
 			break;
 		case PY_SET:
@@ -336,6 +341,26 @@ static inline bool py_what_addop(PMState *pvm, int argc, PyOp op) {
 	return false;
 }
 
+// set out to the number arg. If it fails it returns false. This could be b/c
+// the string was misunderstood or b/c out of memmory
+static inline bool op_arg_str_to_num(RAnalOp *op, st64 *out, bool longg, int base) {
+	char *str = strchr (op->mnemonic, '"');
+	if (!str) {
+		return false;
+	}
+	str++;
+	char *end = NULL;
+	long long o = strtoll (str, &end, base);
+	if (longg && *end == 'L') {
+		end++;
+	}
+	if (*end == '"' && o > LLONG_MIN && o < LLONG_MAX) {
+		*out = o;
+		return true;
+	}
+	return false;
+}
+
 // memo stuff
 static inline bool memo_put(PMState *pvm, st64 loc) {
 	if (loc >= 0) {
@@ -352,6 +377,12 @@ static inline bool op_memorize(PMState *pvm) {
 	return memo_put (pvm, pvm->memo->count);
 }
 
+static inline bool op_put(PMState *pvm, RAnalOp *op) {
+	st64 out;
+	return op_arg_str_to_num (op, &out, false, 10)
+		&& memo_put (pvm, out);
+}
+
 static inline bool memo_get(PMState *pvm, st64 loc) {
 	if (loc >= 0) {
 		PyObj *obj = ht_up_find (pvm->memo, loc, NULL);
@@ -364,11 +395,69 @@ static inline bool memo_get(PMState *pvm, st64 loc) {
 	return false;
 }
 
+static inline bool op_get(PMState *pvm, RAnalOp *op) {
+	st64 out;
+	return op_arg_str_to_num (op, &out, false, 10)
+		&& memo_get (pvm, out);
+}
+
 static inline bool op_dup(PMState *pvm) {
 	PyObj *obj = (PyObj *)r_list_last (pvm->stack);
 	if (obj && r_list_push (pvm->stack, obj)) {
 		obj->refcnt++;
 		return true;
+	}
+	return false;
+}
+
+static inline bool op_ext(PMState *pvm, RAnalOp *op) {
+	PyObj *obj = py_obj_new (pvm, PY_EXT);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		obj->py_extnum = op->val;
+		return true;
+	}
+	return false;
+}
+
+static inline bool make_persid(PMState *pvm, PyObj *pid) {
+	PyObj *obj = py_obj_new (pvm, PY_PERSID);
+	if (pid && obj) {
+		obj->py_pid = pid;
+		if (r_list_push (pvm->stack, obj)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// expects to take a number off the stack
+static inline bool op_binpersid(PMState *pvm) {
+	PyObj *pid = r_list_pop (pvm->stack);
+	if (pid) {
+		return make_persid (pvm, pid);
+	}
+	R_LOG_INFO ("[0x%"PFMT64x"] binpersid failed to get stack", pvm->offset);
+	return false;
+}
+
+static inline bool op_next_buffer(PMState *pvm) {
+	PyObj *obj = py_obj_new (pvm, PY_BUFFER);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		obj->py_bufi = pvm->buffernum++;
+		return true;
+	}
+	return false;
+}
+
+static inline bool op_readonly_buffer(PMState *pvm) {
+	PyObj *obj = py_obj_new (pvm, PY_BUFFER_RO);
+	PyObj *buf = r_list_pop (pvm->stack);
+	if (obj && buf && r_list_push (pvm->stack, obj)) {
+		obj->py_robuf = buf;
+		return true;
+	}
+	if (buf) {
+		r_list_push (pvm->stack, buf); // try to fix stack to simplify debugging of pickle
 	}
 	return false;
 }
@@ -614,16 +703,22 @@ static inline char *get_big_str(RCore *c, RAnalOp *op) {
 	return op_str_arg (op);
 }
 
-static inline bool push_str(RCore *c, PMState *pvm, RAnalOp *op) {
-	char *str = get_big_str (c, op);
+static inline PyObj *py_obj_newstr(RCore *c, PMState *pvm, RAnalOp *op) {
 	PyObj *obj = py_obj_new (pvm, PY_STR);
-	if (obj && str) {
-		obj->py_str = str;
-		if (r_list_push (pvm->stack, obj)) {
-			return true;
+	if (obj) {
+		obj->py_str = get_big_str (c, op);
+		if (obj->py_str) {
+			return obj;
 		}
 	}
-	free (str);
+	return NULL;
+}
+
+static inline bool push_str(RCore *c, PMState *pvm, RAnalOp *op) {
+	PyObj *obj = py_obj_newstr (c, pvm, op);
+	if (obj && r_list_push (pvm->stack, obj)) {
+		return true;
+	}
 	return false;
 }
 
@@ -667,6 +762,65 @@ static inline PyObj *str_to_pystr(PMState *pvm, const char *str) {
 	return false;
 }
 
+// last resort, just make it into a call to `int("strnum")`
+static inline bool push_int_type_str(RCore *c, PMState *pvm, RAnalOp *op, bool longg) {
+	// building from ground up
+	PyObj *obj_child = py_obj_newstr (c, pvm, op);
+	if (!obj_child) {
+		return false;
+	}
+	if (longg) {
+		char *str = obj_child->py_str;
+		size_t len = strlen (str);
+		if (len > 0 && str[len - 0] == 'L') {
+			str[len - 1] = '\0';
+		}
+	}
+
+	// put string into tuple
+	PyObj *obj_parent = py_iter_new (pvm, PY_TUPLE);
+	if (!obj_parent || !r_list_prepend (obj_parent->py_iter, obj_child)) {
+		return false;
+	}
+	// int opcode uses `int("num", 0)`
+	if (!longg) {
+		PyObj *arg1 = py_obj_new (pvm, PY_INT);
+		if (!arg1 || !r_list_push (obj_parent->py_iter, arg1)) {
+			return false;
+		}
+		arg1->py_int = 0;
+	}
+	obj_child = obj_parent;
+
+
+	// create reduce
+	obj_parent = py_obj_new (pvm, PY_REDUCE);
+	if (!obj_parent) {
+		return false;
+	}
+	obj_parent->reduce.args = obj_child;
+
+	// set global in reduce
+	obj_child = py_obj_new (pvm, PY_GLOB);
+	if (!obj_child) {
+		return false;
+	}
+	obj_child->py_glob.module = str_to_pystr (pvm, "builtins");
+	obj_child->py_glob.name = str_to_pystr (pvm, "int");
+	if (!obj_child->py_glob.module || !obj_child->py_glob.name) {
+		return false;
+	}
+	obj_parent->reduce.glob = obj_child;
+
+
+	return r_list_push (pvm->stack, obj_parent)? true: false;
+}
+
+static inline bool op_persid(RCore *c, PMState *pvm, RAnalOp *op) {
+	PyObj *obj = py_obj_newstr (c, pvm, op);
+	return make_persid (pvm, obj);
+}
+
 static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyGlob *cl) {
 	char *str = op_str_arg (op);
 	if (str) {
@@ -681,6 +835,37 @@ static inline bool split_module_str(PMState *pvm, RAnalOp *op, PyGlob *cl) {
 		free (str);
 	}
 	return cl->name && cl->module? true: false;
+}
+
+static inline bool strnum_try_push(RCore *c, PMState *pvm, RAnalOp *op, bool longg) {
+	st64 val = 0;
+	if (op_arg_str_to_num (op, &val, longg, longg? 10: 0)) {
+		PyObj *obj = py_obj_new (pvm, PY_INT);
+		if (obj && r_list_push (pvm->stack, obj)) {
+			obj->py_int = val;
+			return true;
+		}
+	}
+	return false;
+}
+
+static inline bool op_long(RCore *c, PMState *pvm, RAnalOp *op) {
+	return strnum_try_push (c, pvm, op, true)
+		|| push_int_type_str (c, pvm, op, true);
+}
+
+static inline bool op_int(RCore *c, PMState *pvm, RAnalOp *op) {
+	// this is subtitly a strange opcode...
+	//printf ("op->ptr: %s\n", op->ptr);
+	if (!strcmp ("\"01\"", op->mnemonic + 4)) {
+		return op_newbool (pvm, true);
+	}
+	if (!strcmp ("\"00\"", op->mnemonic + 4)) {
+		return op_newbool (pvm, false);
+	}
+
+	return strnum_try_push (c, pvm, op, false)
+		|| push_int_type_str (c, pvm, op, false);
 }
 
 static inline PyObj *glob_obj(PMState *pvm, RAnalOp *op) {
@@ -812,12 +997,19 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 		return op_float (pvm, op, true);
 	case OP_BINFLOAT:
 		return op_float (pvm, op, false);
+	// ints again but the bad ones, string encoded...
+	case OP_INT:
+		return op_int (c, pvm, op);
+	case OP_LONG: // same as int, but string arg *should* start with L
+		return op_long (c, pvm, op);
+	case OP_PERSID:
+		return op_persid (c, pvm, op);
 	// strings TODO: distinguish between b'', u'', and ''
 	case OP_STRING:
 	case OP_UNICODE:
 	case OP_BINUNICODE8:
 	case OP_BINBYTES8:
-	case OP_BYTEARRAY8:
+	case OP_BYTEARRAY8: // proto 5
 	case OP_BINSTRING:
 	case OP_BINUNICODE:
 	case OP_BINBYTES:
@@ -889,27 +1081,25 @@ static inline bool exec_op(RCore *c, PMState *pvm, RAnalOp *op, char code) {
 	case OP_LONG_BINPUT:
 	case OP_BINPUT:
 		return memo_put (pvm, op->val);
+	case OP_PUT:
+		return op_put (pvm, op);
 	case OP_LONG_BINGET:
 	case OP_BINGET:
 		return memo_get (pvm, op->val);
+	case OP_GET:
+		return op_get (pvm, op);
 	case OP_DUP:
 		return op_dup (pvm);
-
-	// unhandled
-	case OP_INT:
-	case OP_LONG:
-	case OP_PERSID:
-	case OP_BINPERSID:
-	case OP_GET:
-	case OP_PUT:
-	// registry
 	case OP_EXT1:
 	case OP_EXT2:
 	case OP_EXT4:
-	// PROTO 4
-	case OP_NEXT_BUFFER:
-	case OP_READONLY_BUFFER:
-
+		return op_ext (pvm, op);
+	case OP_BINPERSID:
+		return op_binpersid (pvm);
+	case OP_NEXT_BUFFER: // proto 5, C stuff
+		return op_next_buffer (pvm);
+	case OP_READONLY_BUFFER: // proto 5, C stuff
+		return op_readonly_buffer (pvm);
 	default:
 		if (op->type != R_ANAL_OP_TYPE_ILL) {
 			R_LOG_ERROR ("Can't handle op %02x '%s' yet", code & 0xff, op->mnemonic);
@@ -1014,8 +1204,13 @@ static int pickle_dec(void *user, const char *input) {
 		} else {
 			PrintInfo nfo;
 			state.recurse++;
-			if (!print_info_init (&nfo, state.recurse, c) || !dump_machine(&state, &nfo, !pvm_fin)) {
-				R_LOG_ERROR ("Failed to dump pickle");
+			if (print_info_init (&nfo, state.recurse, c)) {
+				nfo.setflags = strchr (input, 'f');
+				if (!dump_machine( &state, &nfo, !pvm_fin)) {
+					R_LOG_ERROR ("Failed to dump pickle");
+				}
+			} else {
+				R_LOG_ERROR ("Failed to init pickle printer state");
 			}
 			print_info_clean (&nfo);
 		}

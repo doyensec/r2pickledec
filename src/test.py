@@ -470,6 +470,72 @@ tests = [
             stop
        """,
        "ret" : '{"stack":[{"offset":31,"type":"PY_NEWOBJ","value":{"func":{"offset":28,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"requests.sessions"},"name":{"offset":19,"type":"PY_STR","value":"session"}}},"args":{"offset":29,"type":"PY_TUPLE","value":[]},"kwargs":{"offset":30,"type":"PY_DICT","value":[]}}}],"popstack":[]}'
+    }, {
+       "name" : "ext func",
+       "asm" : """
+            ext1 42
+            empty_tuple
+            reduce
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":3,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_EXT","value":42},"args":{"offset":2,"type":"PY_TUPLE","value":[]}}}],"popstack":[]}'
+    }, {
+       "name" : "basic persid",
+       "asm" : """
+            binint1 42
+            binpersid
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":2,"type":"PY_PERSID","value":{"offset":0,"type":"PY_INT","value":42}}],"popstack":[]}'
+    }, {
+       "name" : "nextbuffer in print",
+       "asm" : """
+            global "builtins print"
+            next_buffer
+            tuple1
+            reduce
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":18,"type":"PY_REDUCE","value":{"func":{"offset":0,"type":"PY_GLOB","value":{"module":{"offset":0,"type":"PY_STR","value":"builtins"},"name":{"offset":0,"type":"PY_STR","value":"print"}}},"args":{"offset":17,"type":"PY_TUPLE","value":[{"offset":16,"type":"PY_BUFFER","value":0}]}}}],"popstack":[]}'
+    }, {
+       "name" : "readonly buffer",
+       "asm" : """
+            next_buffer
+            readonly_buffer
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":1,"type":"PY_BUFFER_RO","value":{"offset":0,"type":"PY_BUFFER","value":0}}],"popstack":[]}'
+    }, {
+       "name" : "int basic",
+       "asm" : """
+            int "42"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_INT","value":42}],"popstack":[]}'
+    }, {
+       "name" : "int basic",
+       "asm" : """
+            int "01"
+            int "00"
+            int "4444444444444444444444444444444444444444444444444444444"
+            int "0x42"
+            long "1"
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_BOOL","value":true},{"offset":4,"type":"PY_BOOL","value":false},{"offset":8,"type":"PY_REDUCE","value":{"func":{"offset":8,"type":"PY_GLOB","value":{"module":{"offset":8,"type":"PY_STR","value":"builtins"},"name":{"offset":8,"type":"PY_STR","value":"int"}}},"args":{"offset":8,"type":"PY_TUPLE","value":[{"offset":8,"type":"PY_STR","value":"4444444444444444444444444444444444444444444444444444444"},{"offset":8,"type":"PY_INT","value":0}]}}},{"offset":65,"type":"PY_INT","value":66},{"offset":71,"type":"PY_INT","value":1}],"popstack":[]}'
+    }, {
+       "name" : "get and put",
+       "asm" : """
+            binint1 0
+            memoize
+            binint 42
+            put "44"
+            get "0"
+            binget 44
+            tuple2
+            stop
+       """,
+       "ret" : '{"stack":[{"offset":0,"type":"PY_INT","value":0},{"offset":3,"type":"PY_INT","value":42},{"offset":17,"type":"PY_TUPLE","value":[{"offset":0,"type":"PY_INT","prev_seen":".stack[0]"},{"offset":3,"type":"PY_INT","prev_seen":".stack[1]"}]}],"popstack":[]}'
     }
 ]
 

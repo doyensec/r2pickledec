@@ -109,6 +109,10 @@ static bool printer_pop_state(PrintInfo *nfo) {
 	return ret;
 }
 
+static inline bool printer_append_return(PrintInfo *nfo) {
+	return printer_appendf (nfo, "%sreturn%s ", PALCOLOR (ret), PALCOLOR (reset));
+}
+
 static inline char *glob_varname(PyObj *obj) {
 	PyObj *name = obj->py_glob.name;
 	if (name->type == PY_STR) {
@@ -125,6 +129,15 @@ static inline char *glob_varname(PyObj *obj) {
 }
 
 static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
+	const char *pre = "pick.";
+	if (!obj->noflags && nfo->flags) {
+		RFlagItem *f = r_flag_get_at (nfo->flags,  obj->offset, false);
+		if (f && r_str_startswith (f->name, pre)) {
+			obj->varname = strdup (f->name + strlen (pre));
+			return obj->varname;
+		}
+	}
+
 	if (!obj->varname) {
 		switch (obj->type) {
 		case PY_NONE:
@@ -132,6 +145,9 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 			break;
 		case PY_WHAT:
 			obj->varname = r_str_newf ("what_x%" PFMT64x, obj->offset);
+			break;
+		case PY_EXT:
+			obj->varname = r_str_newf ("ext_x%"PFMT64x"_x%"PFMT64x, obj->py_extnum, obj->offset);
 			break;
 		case PY_INT:
 			obj->varname = r_str_newf ("int_%d_x%" PFMT64x, obj->py_int, obj->offset);
@@ -176,6 +192,15 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 		case PY_DICT:
 			obj->varname = r_str_newf ("dict_x%" PFMT64x, obj->offset);
 			break;
+		case PY_PERSID:
+			obj->varname = r_str_newf ("persid_x%" PFMT64x, obj->offset);
+			break;
+		case PY_BUFFER:
+			obj->varname = r_str_newf ("buf_x%" PFMT64x, obj->offset);
+			break;
+		case PY_BUFFER_RO:
+			obj->varname = r_str_newf ("bufro_x%" PFMT64x, obj->offset);
+			break;
 		case PY_SPLIT:
 		case PY_NOT_RIGHT:
 			obj->varname = r_str_newf ("META_x%" PFMT64x, obj->offset);
@@ -187,6 +212,15 @@ static inline const char *obj_varname(PrintInfo *nfo, PyObj *obj) {
 			break;
 		}
 	}
+
+	if (nfo->setflags && nfo->flags) {
+		char *n = r_str_newf ("%s%s", pre, obj->varname);
+		if (n) {
+			r_flag_set (nfo->flags, n, obj->offset, 1);
+			free (n);
+		}
+	}
+
 	return obj->varname;
 }
 
@@ -235,7 +269,7 @@ static inline bool split_is_resolved(PrintInfo *nfo, PyObj *split) {
 // 0 ok, >0 printed var instead of obj (ie caller is done), <0 error
 static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 	if (PSTATE (nfo, ret)) {
-		if (!printer_append (nfo, "return ")) {
+		if (!printer_append_return (nfo)) { // BUG: last of double return
 			return -1;
 		}
 		if (obj->varname) {
@@ -297,6 +331,55 @@ static inline bool dump_bool(PrintInfo *nfo, PyObj *obj) {
 	bool ret = printer_append (nfo, obj->py_bool? "True": "False");
 	ret &= newline (nfo);
 	return ret;
+}
+
+static inline bool dump_ext(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	return printer_appendf (
+		  nfo, "%s_inverted_registry%s.%sget%s(%s%d%s)",
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (num), obj->py_extnum, PALCOLOR (reset))
+		&& newline (nfo);
+}
+
+static inline bool dump_persid(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
+	return  printer_appendf (nfo, "%spersistent_load%s(",
+		  PALCOLOR (func_var), PALCOLOR (reset))
+		&& dump_obj (nfo, obj->py_pid)
+		&& printer_appendf (nfo, ")")
+		&& printer_pop_state (nfo)
+		&& newline (nfo);
+}
+
+static inline bool dump_buf(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	return  printer_appendf (nfo, "%spickle_buffer_at%s(%s0x%"PFMT64x"%s)",
+		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (num), obj->py_bufi, PALCOLOR (reset))
+		&& newline (nfo);
+}
+
+static inline bool dump_buf_ro(PrintInfo *nfo, PyObj *obj) {
+	PREPRINT (nfo, obj);
+	PrState *ps = printer_push_state (nfo, false);
+	if (!ps) {
+		return false;
+	}
+	ps->first = false;
+	ps->ret = false;
+	return dump_obj (nfo, obj->py_robuf)
+	  && printer_appendf (nfo, ".%storeadonly%s()",
+		  PALCOLOR (func_var), PALCOLOR (reset))
+		&& printer_pop_state (nfo)
+		&& newline (nfo);
 }
 
 static inline bool dump_int(PrintInfo *nfo, PyObj *obj) {
@@ -583,8 +666,8 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
 		ps = r_list_last (nfo->outstack);
 		if (ps->ret) {
 			ps->first = false;
-			ret &= printer_append (nfo, "return ");
 		}
+
 		if (!ret || !printer_push_state (nfo, true)) {
 			return false;
 		}
@@ -751,7 +834,7 @@ static inline bool what_completed(PrintInfo *nfo, PyObj *obj) {
 
 static inline int what_purge_intermediate(PrintInfo *nfo, PyObj *what) {
 	RListIter *iter = what->iter_next;
-	RListIter *purge_to;
+	RListIter *purge_to = NULL;
 	PyOper *pop;
 	r_list_foreach_prev (what->py_what, purge_to, pop) {
 		if (purge_to == iter) {
@@ -847,7 +930,8 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *what) {
 		return printer_appendf (nfo, "%s%s%s", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
 	}
 	if (ps->ret){
-		return printer_appendf (nfo, "return %s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
+		return printer_append_return (nfo)
+			&& printer_appendf (nfo, "%s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
 	}
 	return true;
 }
@@ -856,6 +940,14 @@ bool dump_obj_no_pre(PrintInfo *nfo, PyObj *obj) {
 	switch (obj->type) {
 	case PY_BOOL:
 		return dump_bool (nfo, obj);
+	case PY_EXT:
+		return dump_ext (nfo, obj);
+	case PY_PERSID:
+		return dump_persid (nfo, obj);
+	case PY_BUFFER:
+		return dump_buf (nfo, obj);
+	case PY_BUFFER_RO:
+		return dump_buf_ro (nfo, obj);
 	case PY_INT:
 		return dump_int (nfo, obj);
 	case PY_STR:
@@ -959,7 +1051,11 @@ bool dump_machine(PMState *pvm, PrintInfo *nfo, bool warn) {
 				}
 			}
 		}
-		ret = ret && dump_stack (nfo, pvm->stack, "VM");
+		if (r_list_length (pvm->stack) > 0) {
+			ret = ret && dump_stack (nfo, pvm->stack, "VM");
+		} else {
+			printf ("%s## stack is empty%s\n", PALCOLOR (usercomment), PALCOLOR (reset));
+		}
 	}
 	if (ret && nfo->popstack && r_list_length (pvm->popstack)) {
 		ret = ret && dump_stack (nfo, pvm->popstack, "POP");
@@ -987,6 +1083,7 @@ bool print_info_init(PrintInfo *nfo, ut64 recurse, RCore *core) {
 			}
 		}
 	}
+	nfo->flags = core->flags;
 	nfo->recurse = recurse;
 	nfo->outstack = r_list_newf ((RListFree) pstate_free);
 	printer_push_state (nfo, false); // init print state

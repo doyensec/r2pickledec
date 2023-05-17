@@ -33,8 +33,16 @@ const char *py_type_to_name(PyType t) {
 		return "PY_BOOL";
 	case PY_DICT:
 		return "PY_DICT";
+	case PY_EXT:
+		return "PY_EXT"; // maybe should error?
 	case PY_SPLIT:
 		return "PY_SPLIT"; // maybe should error?
+	case PY_PERSID:
+		return "PY_PERSID";
+	case PY_BUFFER:
+		return "PY_BUFFER";
+	case PY_BUFFER_RO:
+		return "PY_BUFFER_RO";
 	case PY_NOT_RIGHT:
 	default:
 		r_warn_if_reached ();

@@ -239,6 +239,12 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	// just the value
 	bool ret = true;
 	switch (obj->type) {
+	case PY_EXT:
+		ret &= pj_N (pj, obj->py_extnum)? true: false;
+		break;
+	case PY_BUFFER:
+		ret &= pj_N (pj, obj->py_bufi)? true: false;
+		break;
 	case PY_INT:
 		ret &= pj_N (pj, obj->py_int)? true: false;
 		break;
@@ -254,6 +260,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 	case PY_GLOB:
 		ret &= py_glob (pj, obj, path);
 		break;
+	case PY_PERSID:
+		ret &= py_obj (pj, obj->py_pid, path);
+		break;
 	case PY_NEWOBJ:
 	case PY_INST:
 	case PY_REDUCE:
@@ -264,6 +273,9 @@ static bool py_obj(PJ *pj, PyObj *obj, RList *path) {
 		break;
 	case PY_SPLIT:
 		ret &= py_obj (pj, obj->split, path);
+		break;
+	case PY_BUFFER_RO:
+		ret &= py_obj (pj, obj->py_robuf, path);
 		break;
 	case PY_FROZEN_SET:
 	case PY_SET:
