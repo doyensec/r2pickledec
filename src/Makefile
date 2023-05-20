@@ -52,6 +52,6 @@ debug: $(TARGET)
 install: $(TARGET)
 	install $(TARGET) $(INSTAL_LOC)/$(TARGET)
 uninstall:
-	rm /opt/$(TARGET)
+	rm $(INSTAL_LOC)/$(TARGET)
 clean:
 	rm -f $(OBJ) $(TARGET)
