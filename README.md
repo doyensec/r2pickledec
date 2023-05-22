@@ -18,7 +18,7 @@ $ make
 $ make install
 ```
 
-* Test instillation
+* Test the installation
 ```
 $ cd ../
 $ r2 -a pickle -qqc 'pdP?' -
