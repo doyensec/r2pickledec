@@ -273,7 +273,7 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 			return -1;
 		}
 		if (obj->varname) {
-			if (!PCOLORSTR (obj->varname, func_var) || !printer_append (nfo, "\n")) {
+			if (!PCOLORSTR (obj->varname, var) || !printer_append (nfo, "\n")) {
 				return -1;
 			}
 			return 1;
@@ -289,14 +289,14 @@ static inline int var_pre_print(PrintInfo *nfo, PyObj *obj) {
 		if (!var) {
 			return -1;
 		}
-		if (!PCOLORSTR (obj->varname, func_var) || !printer_append (nfo, " = ")) {
+		if (!PCOLORSTR (obj->varname, var) || !printer_append (nfo, " = ")) {
 			return -1;
 		}
 		return 0;
 	}
 
 	if (obj->varname) {
-		if (!PCOLORSTR (obj->varname, func_var)) {
+		if (!PCOLORSTR (obj->varname, var)) {
 			return -1;
 		}
 		return 1;
@@ -337,8 +337,8 @@ static inline bool dump_ext(PrintInfo *nfo, PyObj *obj) {
 	PREPRINT (nfo, obj);
 	return printer_appendf (
 		  nfo, "%s_inverted_registry%s.%sget%s(%s%d%s)",
-		  PALCOLOR (func_var), PALCOLOR (reset),
-		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (var), PALCOLOR (reset),
+		  PALCOLOR (var), PALCOLOR (reset),
 		  PALCOLOR (num), obj->py_extnum, PALCOLOR (reset))
 		&& newline (nfo);
 }
@@ -352,7 +352,7 @@ static inline bool dump_persid(PrintInfo *nfo, PyObj *obj) {
 	ps->first = false;
 	ps->ret = false;
 	return  printer_appendf (nfo, "%spersistent_load%s(",
-		  PALCOLOR (func_var), PALCOLOR (reset))
+		  PALCOLOR (var), PALCOLOR (reset))
 		&& dump_obj (nfo, obj->py_pid)
 		&& printer_appendf (nfo, ")")
 		&& printer_pop_state (nfo)
@@ -362,7 +362,7 @@ static inline bool dump_persid(PrintInfo *nfo, PyObj *obj) {
 static inline bool dump_buf(PrintInfo *nfo, PyObj *obj) {
 	PREPRINT (nfo, obj);
 	return  printer_appendf (nfo, "%spickle_buffer_at%s(%s0x%"PFMT64x"%s)",
-		  PALCOLOR (func_var), PALCOLOR (reset),
+		  PALCOLOR (var), PALCOLOR (reset),
 		  PALCOLOR (num), obj->py_bufi, PALCOLOR (reset))
 		&& newline (nfo);
 }
@@ -377,7 +377,7 @@ static inline bool dump_buf_ro(PrintInfo *nfo, PyObj *obj) {
 	ps->ret = false;
 	return dump_obj (nfo, obj->py_robuf)
 	  && printer_appendf (nfo, ".%storeadonly%s()",
-		  PALCOLOR (func_var), PALCOLOR (reset))
+		  PALCOLOR (var), PALCOLOR (reset))
 		&& printer_pop_state (nfo)
 		&& newline (nfo);
 }
@@ -672,7 +672,7 @@ static inline bool dump_iter(PrintInfo *nfo, PyObj *obj) {
 			return false;
 		}
 
-		ret = PCOLORSTR (obj->varname, func_var);
+		ret = PCOLORSTR (obj->varname, var);
 
 		switch (obj->type) {
 		case PY_LIST:
@@ -735,7 +735,7 @@ static inline bool dump_glob(PrintInfo *nfo, PyObj *obj) {
 
 static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	return
-		PCOLORSTR (vn, func_var)
+		PCOLORSTR (vn, var)
 		&& printer_append (nfo, " = ")
 		&& dump_obj (nfo, pop->obj)
 		&& printer_append (nfo, "\n");
@@ -744,7 +744,7 @@ static inline bool dump_oper_init(PrintInfo *nfo, PyOper *pop, const char *vn) {
 static inline bool dump_oper_build(PrintInfo *nfo, PyOper *pop, const char *vn) {
 	PyObj *args = r_list_last (pop->stack);
 	return args
-		&& PCOLORSTR (vn, func_var)
+		&& PCOLORSTR (vn, var)
 		&& printer_appendf (nfo, ".__setstate__(")
 		&& dump_obj (nfo, args) && printer_append (nfo, ")\n");
 }
@@ -752,7 +752,7 @@ static inline bool dump_oper_build(PrintInfo *nfo, PyOper *pop, const char *vn) 
 
 static inline bool dump_oper_meth(PrintInfo *nfo, PyObj *obj, const char *meth, const char *vn) {
 	return obj
-		&& PCOLORSTR (vn, func_var)
+		&& PCOLORSTR (vn, var)
 		&& printer_appendf (nfo, ".%s(", meth)
 		&& dump_obj (nfo, obj)
 		&& printer_append (nfo, ")\n");
@@ -776,7 +776,7 @@ static inline bool dump_oper_setitems(PrintInfo *nfo, PyOper *pop, const char *v
 	RListIter *iter;
 	r_list_foreach (pop->stack, iter, obj) {
 		if (iskey) { // start
-			if (!PCOLORSTR (vn, func_var) || !printer_append (nfo, "[")) {
+			if (!PCOLORSTR (vn, var) || !printer_append (nfo, "[")) {
 				return false;
 			}
 		} else if (!printer_append (nfo, "] = ")) {// middle
@@ -927,11 +927,11 @@ static inline bool dump_what(PrintInfo *nfo, PyObj *what) {
 	}
 
 	if (!ps->first) {
-		return printer_appendf (nfo, "%s%s%s", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
+		return printer_appendf (nfo, "%s%s%s", PALCOLOR (var), what->varname, PALCOLOR (reset));
 	}
 	if (ps->ret){
 		return printer_append_return (nfo)
-			&& printer_appendf (nfo, "%s%s%s\n", PALCOLOR (func_var), what->varname, PALCOLOR (reset));
+			&& printer_appendf (nfo, "%s%s%s\n", PALCOLOR (var), what->varname, PALCOLOR (reset));
 	}
 	return true;
 }
@@ -997,7 +997,7 @@ bool dump_obj(PrintInfo *nfo, PyObj *obj) {
 	if (ps) {
 		ret = ret
 			&& printer_pop_state (nfo)
-			&& PCOLORSTR (obj->varname, func_var);
+			&& PCOLORSTR (obj->varname, var);
 	}
 	return ret;
 }
